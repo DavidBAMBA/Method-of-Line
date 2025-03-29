@@ -18,26 +18,40 @@ alphax, alphay = 1.0, 1.0
 u0 = np.exp(-100 * ((X - 0.5)**2 + (Y - 0.5)**2))
 u0_flat = u0.flatten()
 
-# Boundary condition 
+# Boundary condition: periodic
 def apply_periodic(u):
-    return u  # np.roll handles periodicity implicitly
+    u[0, :]   = u[-2, :]  # left border = last interior row
+    u[-1, :]  = u[1, :]   # right border = first interior row
+    u[:, 0]   = u[:, -2]  # bottom border = last interior column
+    u[:, -1]  = u[:, 1]   # top border = first interior column
+    return u
 
+# Boundary condition: Dirichlet
 def apply_dirichlet(u, value=0.0):
-    u[0, :] = value
-    u[-1, :] = value
-    u[:, 0] = value
-    u[:, -1] = value
+    u[0, :]   = value
+    u[-1, :]  = value
+    u[:, 0]   = value
+    u[:, -1]  = value
     return u
 
 # Spatial derivative: centered differences 
 def dudt_centered(t, u_flat):
     u = u_flat.reshape((Nx, Ny))
+    du_dx = np.zeros_like(u)
+    du_dy = np.zeros_like(u)
 
-    du_dx = (np.roll(u, -1, axis=0) - np.roll(u, 1, axis=0)) / (2 * dx)
-    du_dy = (np.roll(u, -1, axis=1) - np.roll(u, 1, axis=1)) / (2 * dy)
+    # Central differences for interior points
+    du_dx[1:-1, :] = (u[2:, :] - u[:-2, :]) / (2 * dx)
+    du_dy[:, 1:-1] = (u[:, 2:] - u[:, :-2]) / (2 * dy)
+
+    du_dx[0, :] = 0.0
+    du_dx[-1, :] = 0.0
+    du_dy[:, 0] = 0.0
+    du_dy[:, -1] = 0.0
 
     du = -alphax * du_dx - alphay * du_dy
     return du.flatten()
+
 
 # RK4 Integrator 
 def RK4(dudt_func, bc_func, t0, q0, tf, n):
@@ -45,19 +59,42 @@ def RK4(dudt_func, bc_func, t0, q0, tf, n):
     q = np.zeros((n, len(q0) + 1))
     q[0, 0] = t0
     q[0, 1:] = q0
+
     for i in range(1, n):
         t = q[i - 1, 0]
-        u = q[i - 1, 1:].reshape((Nx, Ny))
-        u = bc_func(u.copy())               # Apply BCs before each RK step
-        u = u.flatten()
 
-        k1 = dt * dudt_func(t, u)
-        k2 = dt * dudt_func(t + dt/2, u + k1/2)
-        k3 = dt * dudt_func(t + dt/2, u + k2/2)
-        k4 = dt * dudt_func(t + dt,   u + k3)
+        # Retrieve previous state and flatten it
+        u_prev = q[i - 1, 1:].reshape((Nx, Ny))
+        uf     = u_prev.flatten()
 
+        # k1
+        k1 = dt * dudt_func(t, uf)
+
+        # k2
+        u1 = (uf + k1/2).reshape((Nx, Ny))
+        u1 = bc_func(u1).flatten()
+        k2 = dt * dudt_func(t + dt/2, u1)
+
+        # k3
+        u2 = (uf + k2/2).reshape((Nx, Ny))
+        u2 = bc_func(u2).flatten()
+        k3 = dt * dudt_func(t + dt/2, u2)
+
+        # k4
+        u3 = (uf + k3).reshape((Nx, Ny))
+        u3 = bc_func(u3).flatten()
+        k4 = dt * dudt_func(t + dt, u3)
+
+        # Final RK4 step
+        uf_next = uf + (k1 + 2*k2 + 2*k3 + k4) / 6
+
+        # Update time
         q[i, 0] = t + dt
-        q[i, 1:] = u + (k1 + 2*k2 + 2*k3 + k4)/6
+
+        # Apply boundary
+        uf_next_2d = bc_func(uf_next.reshape((Nx, Ny)))
+        q[i, 1:] = uf_next_2d.flatten()
+
     return q
 
 # Time parameters 
@@ -67,7 +104,8 @@ tf = 1.0
 n_steps = int(tf / dt) + 1
 
 # Boundary condition 
-bc_func = apply_periodic  # or apply_dirichlet
+# bc_func = apply_periodic  
+bc_func = apply_dirichlet  
 
 # Solve PDE
 sol = RK4(dudt_centered, bc_func, t0=0.0, q0=u0_flat, tf=tf, n=n_steps)
@@ -95,6 +133,5 @@ def update(frame):
 ani = FuncAnimation(fig, update, frames=n_steps, interval=50)
 
 writer = FFMpegWriter(fps=20, bitrate=1800)
-ani.save("advection_2D_centered.mp4", writer=writer)
+ani.save("advection_2D_dirichlet.gif", writer=writer)
 plt.close(fig) 
-
