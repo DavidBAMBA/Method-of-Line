@@ -2,9 +2,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation, FFMpegWriter
 
-xmin, xmax = -0.5, 0.5
+xmin, xmax = 0.0 , 2.0
 # Viscosity
-nu = 0.01
+nu = 0.00
 
 # Periodic BC function 
 def bc_periodic(u):
@@ -15,7 +15,7 @@ def bc_periodic(u):
     return u
 
 
-def reconstruction_MUSCL(u, dx):
+def reconstruction_Linear(u, dx):
     """
     MUSCL reconstruction with minmod limiter and periodic BCs.
     Returns two arrays of size Nx+1:
@@ -76,14 +76,13 @@ def riemann_burgers(ul, ur):
 # Compute dU/dt 
 def dudt_burgers(t, u):
     dx = (xmax - xmin) / u.size
-    ul, ur = reconstruction_MUSCL(u, dx)    # ul, ur have shape (Nx+1,)
+    ul, ur = reconstruction_Linear(u, dx)    # ul, ur have shape (Nx+1,)
     flux = riemann_burgers(ul, ur)     
     return - (flux[1:] - flux[:-1]) / dx
 
-
 def dudt_burgers_viscous(t, u):
     dx = (xmax - xmin) / u.size
-    ul, ur = reconstruction_MUSCL(u, dx)
+    ul, ur = reconstruction_Linear(u, dx)
     flux = riemann_burgers(ul, ur)
 
     # convective term
@@ -99,7 +98,7 @@ def dudt_burgers_viscous_conservative(t, u):
     dx = (xmax - xmin) / u.size
     
     # convective
-    ul, ur = reconstruction_MUSCL(u, dx)
+    ul, ur = reconstruction_Linear(u, dx)
     flux_conv = riemann_burgers(ul, ur)
     dudt_conv = - (flux_conv[1:] - flux_conv[:-1]) / dx
 
@@ -182,8 +181,8 @@ if __name__ == "__main__":
     x_centers = np.linspace(xmin + 0.5 * dx, xmax - 0.5 * dx, Nx)
     
     # Initial condition: sine function (periodic in [0,2] since sin(π*0)=sin(2π)=0)
-    #u_init = np.sin(np.pi * x_centers)
-    u_init = np.exp(-100 * (x_centers)**2)    
+    u_init = np.sin(np.pi * x_centers)
+    #u_init = np.exp(-100 * (x_centers)**2)    
     # Time parameters
     t0 = 0.0
     tf = 0.5
@@ -218,7 +217,7 @@ if __name__ == "__main__":
     
     ani = FuncAnimation(fig, update, frames=len(u_array), interval=1, blit=True)    
     writer = FFMpegWriter(fps=80, codec="libx264", bitrate=-1)
-    ani.save("burgers_1d-muscl-nu=0,01-conservative.mp4", writer=writer, dpi=150)
+    ani.save("burgers_1d-sin.mp4", writer=writer, dpi=150)
 
     
     # Compare initial and final solutions
@@ -229,6 +228,6 @@ if __name__ == "__main__":
     plt.ylabel('u(x, t)')
     plt.title(f'1D Burgers Equation - Initial and Final (CFL={cfl})')
     plt.legend()
-    plt.savefig("burgers_1d-evol-muscl-nu=0,1-conservative.png")
+    plt.savefig("burgers_1d-sin.png")
     
     plt.close('all')
