@@ -13,7 +13,7 @@ from utils import create_mesh_1d, create_U0
 from boundary import dirichlet_sod
 
 # === Parámetros ===
-Nx     = 1000
+Nx     = 200
 xmin   = 0.0
 xmax   = 1.0
 tf     = 0.2
