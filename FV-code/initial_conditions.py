@@ -1,8 +1,5 @@
 import numpy as np
 
-# -----------------------------
-# Advección escalar
-# -----------------------------
 
 def gaussian_advection_1d(x, center=0.5, width=0.1):
     """
@@ -12,7 +9,6 @@ def gaussian_advection_1d(x, center=0.5, width=0.1):
         U[0] = np.exp(-((x - center) / width)**2)
         return U
     return initializer
-
 
 def gaussian_advection_2d(X, Y, center=(0.5, 0.5), width=0.1, amp=1.0):
     """
@@ -33,12 +29,6 @@ def gaussian_advection_2d(X, Y, center=(0.5, 0.5), width=0.1, amp=1.0):
     R2 = (X - x0)**2 + (Y - y0)**2
     return amp * np.exp(-R2 / (2 * width**2))
 
-
-
-# -----------------------------
-# Burgers escalar
-# -----------------------------
-
 def gaussian_burgers_1d(x, center=0.5, width=0.1, amp=1.0):
     """
     Pulso gaussiano para Burgers escalar 1D.
@@ -47,9 +37,6 @@ def gaussian_burgers_1d(x, center=0.5, width=0.1, amp=1.0):
         U[0] = amp * np.exp(-((x - center) / width)**2)
         return U
     return initializer
-
-
-import numpy as np
 
 def gaussian_burgers_2d(X, Y, center=(0.5, 0.5), width=0.1, amp=1.0):
     """
@@ -69,8 +56,6 @@ def gaussian_burgers_2d(X, Y, center=(0.5, 0.5), width=0.1, amp=1.0):
     x0, y0 = center
     return amp * np.exp(- ((X - x0)**2 + (Y - y0)**2) / width**2)
 
-import numpy as np
-
 def sinusoidal_burgers_2d(X, Y, kx=2*np.pi, ky=2*np.pi, amp=1.0):
     """
     Perfil senoidal periódico para Burgers 2D.
@@ -86,11 +71,6 @@ def sinusoidal_burgers_2d(X, Y, kx=2*np.pi, ky=2*np.pi, amp=1.0):
     ndarray de shape (Nx, Ny) con perfil u(x,y,0) = A sin(kx x) sin(ky y)
     """
     return amp * np.sin(kx * X) * np.sin(ky * Y)
-
-
-# -----------------------------
-# Euler 1D – Sod shock tube
-# -----------------------------
 
 def sod_shock_tube_1d(x, x0=0.5):
     """
@@ -109,6 +89,34 @@ def sod_shock_tube_1d(x, x0=0.5):
         U[0] = rho
         U[1] = mom
         U[2] = E
+        return U
+    return initializer
+
+def sod_shock_tube_2d(x, y, x0=0.5):
+    """
+    Condición inicial clásica de Sod para Euler 2D.
+    Salto de discontinuidad a lo largo de x = x0,
+    homogénea en dirección y.
+    
+    x, y: mallas generadas (1D) tipo output de create_mesh_2d.
+    """
+    def initializer(U):
+        # --- crear el perfil inicial en 1D ---
+        rho = np.where(x < x0, 1.0, 0.125)        # densidad
+        v   = np.where(x < x0, 0.0, 0.0)           # velocidad en x
+        P   = np.where(x < x0, 1.0, 0.1)           # presión
+
+        gamma = 1.4
+        momx = rho * v
+        momy = np.zeros_like(rho)                  # sin movimiento en y
+        E = P / (gamma - 1.0) + 0.5 * rho * v**2
+
+        # --- expandir en 2D (copiar en todas las filas en y) ---
+        U[0] = np.repeat(rho[:, None], len(y), axis=1)
+        U[1] = np.repeat(momx[:, None], len(y), axis=1)
+        U[2] = np.repeat(momy[:, None], len(y), axis=1)
+        U[3] = np.repeat(E[:, None], len(y), axis=1)
+        
         return U
     return initializer
 
@@ -141,7 +149,6 @@ def complex_advection_1d(x):
         return U
     return initializer
 
-
 def shu_osher_1d(x):
     """
     Condición inicial para el problema de Shu–Osher.
@@ -162,7 +169,6 @@ def shu_osher_1d(x):
         return U
     return initializer
 
-
 def explosion_problem_2d(X, Y, center=(1.0, 1.0), radius=0.4):
     """
     Condiciones iniciales para el problema de explosión 2D.
@@ -175,7 +181,7 @@ def explosion_problem_2d(X, Y, center=(1.0, 1.0), radius=0.4):
 
     Retorna:
     --------
-    U : ndarray (4, Nx, Ny) con [ρ, ρu, ρv, E]
+    U : ndarray (4, Nx, Ny) con [rho, rhou, rhov, E]
     """
     x0, y0 = center
     r2 = (X - x0)**2 + (Y - y0)**2
@@ -198,13 +204,10 @@ def explosion_problem_2d(X, Y, center=(1.0, 1.0), radius=0.4):
     U[3] = E
     return U
 
-
-import numpy as np
-
-def schulz_rinne_2d(x, y):
+def schulz_rinne_2d(X, Y):
     """
-    Problema de Riemann 2D (Schulz–Rinne et al. config 3) en dominio [0,1]×[0,1].
-    Inicializa las variables (ρ, ρv_x, ρv_y, E) en cada cuadrante.
+    Problema de Riemann 2D (Schulz-Rinne et al. config 3) en dominio [0,1]×[0,1].
+    Inicializa las variables (rho, rhov_x, rhov_y, E) en cada cuadrante.
 
     Parámetros:
     -----------
@@ -215,8 +218,7 @@ def schulz_rinne_2d(x, y):
     U : ndarray shape (4, Nx, Ny)
     """
     gamma = 1.4
-    X, Y = np.meshgrid(x, y, indexing='ij')
-    Nx, Ny = len(x), len(y)
+    Nx, Ny = len(X), len(Y)
     U = np.zeros((4, Nx, Ny))
 
     # Estados por cuadrante

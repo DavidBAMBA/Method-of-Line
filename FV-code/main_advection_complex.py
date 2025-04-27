@@ -13,12 +13,12 @@ from utils import create_mesh_1d, create_U0
 from boundary import periodic
 
 # === Parámetros ===
-Nx     = 2000
+Nx     = 400
 xmin   = -1.0
 xmax   = 1.0
-tf     = 0.5
+tf     = 2.0
 cfl    = 0.1
-limiter = "mc"  # minmod | mc | superbee
+limiter = "mp5"  # minmod | mc | superbee | mp5
 
 # === Malla y condición inicial ===
 x, dx = create_mesh_1d(xmin, xmax, Nx)

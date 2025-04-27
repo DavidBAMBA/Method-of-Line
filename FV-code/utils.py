@@ -1,8 +1,6 @@
 import numpy as np
 
-# ------------------------------------------------------------
-# Malla 1D sin ghost cells
-# ------------------------------------------------------------
+
 def create_mesh_1d(xmin, xmax, Nx):
     """
     Crea malla 1D sin ghost cells.
@@ -15,10 +13,6 @@ def create_mesh_1d(xmin, xmax, Nx):
     x = np.linspace(xmin + dx/2, xmax - dx/2, Nx)
     return x, dx
 
-
-# ------------------------------------------------------------
-# Malla 2D sin ghost cells
-# ------------------------------------------------------------
 def create_mesh_2d(xmin, xmax, Nx, ymin, ymax, Ny):
     """
     Crea malla 2D sin ghost cells.
@@ -33,9 +27,8 @@ def create_mesh_2d(xmin, xmax, Nx, ymin, ymax, Ny):
     y = np.linspace(ymin + dy/2, ymax - dy/2, Ny)
     return x, y, dx, dy
 
-
 # ------------------------------------------------------------
-# Inicialización de U sin ghost cells
+# Inicialización de U 
 # ------------------------------------------------------------
 def create_U0(nvars, shape, initializer=None):
     """

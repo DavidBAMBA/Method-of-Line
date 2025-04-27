@@ -21,7 +21,6 @@ def periodic(U):
         raise ValueError("U debe tener 2 o 3 dimensiones.")
     return U
 
-import numpy as np
 
 def dirichlet_sod(U):
     """
@@ -47,8 +46,6 @@ def dirichlet_sod(U):
     else:
         raise ValueError("U debe tener 2 o 3 dimensiones.")
     return U
-
-
 
 
 def dirichlet(U, value=0.0):

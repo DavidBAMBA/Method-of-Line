@@ -18,7 +18,9 @@ xmin   = 0.0
 xmax   = 1.0
 tf     = 0.2
 cfl    = 0.3
-limiter = "minmod"  # minmod | mc | superbee
+solver     = "hll"  # "hllc" o "hll"
+
+limiter = "mc"  # minmod | mc | superbee
 
 # === Malla y condición inicial ===
 x, dx = create_mesh_1d(xmin, xmax, Nx)
@@ -31,6 +33,7 @@ equation = Euler1D(gamma=1.4)
 bc_func = dirichlet_sod
 
 recon = lambda U, dx, axis: reconstruct(U, dx, limiter=limiter, axis=axis)
+riemann_solver = lambda UL, UR, eq, axis: solve_riemann(UL, UR, eq, axis, solver=solver)
 
 # === Evolución temporal ===
 times, sol = RK4(dUdt_func=dUdt,

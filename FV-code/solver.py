@@ -13,7 +13,7 @@ def compute_dt_cfl(U, dx, dy, equation, cfl):
 
 
 def dUdt(U, dx, dy, equation, boundary_func, reconstruct, riemann_solver):
-    U = boundary_func(U)  # ← frontera SIEMPRE aplicada
+    U = boundary_func(U)
     if U.ndim == 2:
         UL, UR = reconstruct(U, dx, axis=None)
         F = riemann_solver(UL, UR, equation, axis=None)

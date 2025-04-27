@@ -31,7 +31,7 @@ class Burgers2D:
 
 
 class Euler2D:
-    """Euler ideal 2 D: U = [ρ, ρv_x, ρv_y, E]"""
+    """Euler ideal 2 D: U = [rho, rhov_x, rhov_y, E]"""
     def __init__(self, gamma=1.4):
         self.gamma = gamma
 
@@ -55,11 +55,13 @@ class Euler2D:
                          (E + P) * vy])
 
     # ---------- presión ----------
-    def _pressure(self, U):
+    def _pressure(self, U, p_floor=1e-10):
         rho, rhovx, rhovy, E = U
         vx, vy = rhovx / rho, rhovy / rho
-        kinetic = 0.5 * rho * (vx**2 + vy**2)
-        return (self.gamma - 1.0) * (E - kinetic)
+        e = E / rho - 0.5 * (vx**2 + vy**2)
+        P = (self.gamma - 1.0) * rho * e
+        return np.maximum(P, p_floor)     
+
 
     # ---------- velocidades características ----------
     def max_wave_speed_x(self, U):
@@ -100,7 +102,7 @@ class Burgers1D(Burgers2D):
     pass  # Sin cambios: usa sólo los métodos en x
 
 class Euler1D(Euler2D):
-    """Euler 1D: solo ρ, ρv, E"""
+    """Euler 1D: solo rho, rhov, E"""
 
     def flux_y(self, U): raise NotImplementedError
     def max_wave_speed_y(self, U): raise NotImplementedError

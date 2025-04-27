@@ -12,26 +12,33 @@ from utils import create_mesh_2d, create_U0
 from boundary import extrapolate
 
 # === Parámetros ===
-Nx, Ny = 400, 400
-xmin, xmax = 0.0, 1.0
-ymin, ymax = 0.0, 1.0
-tf   = 0.25
-cfl  = 0.3
-limiter = "mc"
+Nx, Ny       = 400, 400
+xmin, xmax   = 0.0, 1.0
+ymin, ymax   = 0.0, 1.0
+tf           = 0.25
+cfl          = 0.1
+solver       = "hllc"
+limiter      = "mc"
+gamma = 1.4
 
 # === Malla y condición inicial ===
-x, y, dx, dy = create_mesh_2d(xmin, xmax, Nx, ymin, ymax, Ny)
-U0_array = schulz_rinne_2d(x, y)
-initializer = lambda U: U0_array
-U0 = create_U0(nvars=4, shape=(Nx, Ny), initializer=initializer)
-equation = Euler2D(gamma=1.4)
 
-# === Funciones auxiliares ===
+x, y, dx, dy = create_mesh_2d(xmin, xmax, Nx, ymin, ymax, Ny)
+X, Y = np.meshgrid(x, y, indexing='ij')
+
+U_init = schulz_rinne_2d(X, Y)
+initializer = lambda U: U_init
+U0 = create_U0(nvars=4, shape=(Nx, Ny), initializer=initializer)
+
+equation = Euler2D(gamma=gamma)
 recon = lambda U, dx, axis: reconstruct(U, dx, limiter=limiter, axis=axis)
 bc_func = extrapolate
 
+riemann_solver = lambda UL, UR, eq, axis: solve_riemann(UL, UR, eq, axis, solver=solver)
+
 # === Evolución ===
 os.makedirs("videos", exist_ok=True)
+
 times, sol = RK4(dUdt_func=dUdt,
                  boundary_func=bc_func,
                  t0=0.0, U0=U0, tf=tf,
@@ -44,14 +51,14 @@ times, sol = RK4(dUdt_func=dUdt,
 # === Contorno de densidad final ===
 rho = sol[:, 0]  # shape: (nt, Nx, Ny)
 
-plt.figure(figsize=(6, 5))
+""" plt.figure(figsize=(6, 5))
 plt.contour(rho[-1], levels=30, colors='black', extent=[xmin, xmax, ymin, ymax])
 plt.xlabel("x"); plt.ylabel("y")
-plt.title("Contornos de densidad – Schulz-Rinne")
+plt.title("Contornos de densidad - Schulz-Rinne")
 plt.tight_layout()
 plt.savefig("videos/schulz_rinne_density_contour.png")
 plt.close()
-
+ """
 # === Imagen de densidad coloreada ===
 plt.imshow(rho[-1], origin='lower', extent=[xmin, xmax, ymin, ymax],
            cmap='viridis')

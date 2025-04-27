@@ -18,9 +18,10 @@ from boundary import extrapolate
 Nx, Ny = 400, 400
 xmin, xmax = 0.0, 2.0
 ymin, ymax = 0.0, 2.0
-tf = 0.25
+tf = 0.15
 cfl = 0.4
 limiter = "mc"
+solver = "hllc"  # o "hll"
 gamma = 1.4
 
 # === Malla y condiciones iniciales ===
@@ -34,6 +35,8 @@ U0 = create_U0(nvars=4, shape=(Nx, Ny), initializer=initializer)
 equation = Euler2D(gamma=gamma)
 recon = lambda U, dx, axis: reconstruct(U, dx, limiter=limiter, axis=axis)
 bc_func = extrapolate  # frontera abierta
+
+riemann_solver = lambda UL, UR, eq, axis: solve_riemann(UL, UR, eq, axis, solver=solver)
 
 # === Simulación ===
 os.makedirs("videos", exist_ok=True)
@@ -52,7 +55,7 @@ rho = sol[-1, 0]  # densidad
 fig, ax = plt.subplots()
 im = ax.imshow(rho, origin='lower', extent=[xmin, xmax, ymin, ymax], cmap='plasma')
 plt.colorbar(im, label='Densidad')
-ax.set_title("Explosion 2D – Estado final")
+ax.set_title("Explosion 2D - Estado final")
 plt.tight_layout()
 plt.savefig("videos/explosion_2d_density_final.png")
 plt.show()
@@ -71,6 +74,7 @@ plt.ylim(0, 1.2)
 plt.tight_layout()
 plt.savefig("videos/explosion_density_slice_y1.png")
 plt.show()
+
 
 fig = plt.figure(figsize=(8, 6))
 ax = fig.add_subplot(111, projection='3d')
