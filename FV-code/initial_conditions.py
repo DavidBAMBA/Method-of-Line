@@ -6,6 +6,16 @@ def gaussian_advection_1d(x, center=0.5, width=0.1):
         return U
     return initializer
 
+def critical_sine_1d(x):
+    """
+    IC del test de puntos críticos (Henrick et al. 2005):
+        u0(x) = sin(pi*x - sin(pi*x)/pi)
+    """
+    def initializer(U):
+        U[0, :] = np.sin(np.pi*x - np.sin(np.pi*x)/np.pi)
+        return U
+    return initializer
+
 def sine_advection_1d(x, wavelength=1.0):
     def initializer(U):
         U[0, :] = np.sin(2 * np.pi * x / wavelength)

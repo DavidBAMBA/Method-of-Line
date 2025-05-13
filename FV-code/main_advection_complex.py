@@ -13,7 +13,6 @@ import os, glob, re
 # ── módulos del proyecto ────────────────────────────────────────────────
 from config             import NGHOST
 from equations          import Advection1D
-from initial_conditions import complex_advection_1d
 from solver             import RK4, dUdt
 from reconstruction     import reconstruct
 from riemann            import solve_riemann
@@ -21,20 +20,43 @@ from utils              import create_mesh_1d, create_U0
 from write              import setup_data_folder
 
 # === Parámetros ===========================================================
-Nx      = 400
+Nx      = 200
 xmin, xmax = -1.0, 1.0
 tf      = 2.0
 cfl     = 0.1
 velocity = 1.0
-limiter = "mp5"
+limiter = "mc"
 solver  = "exact"
 prefix  = "complex_advection_1d"
+
+# === Perfil analítico separado ============================================
+def complex_profile(x):
+    u = np.zeros_like(x)
+
+    mask1 = (-0.8 <= x) & (x <= -0.6)
+    u[mask1] = np.exp(-np.log(2) * (x[mask1] + 0.7)**2 / 0.0009)
+
+    mask2 = (-0.4 <= x) & (x <= -0.2)
+    u[mask2] = 1.0
+
+    mask3 = (0.0 <= x) & (x <= 0.2)
+    u[mask3] = 1 - np.abs(10 * (x[mask3] - 0.1))
+
+    mask4 = (0.4 <= x) & (x <= 0.6)
+    u[mask4] = np.sqrt(1 - 100 * (x[mask4] - 0.5)**2)
+
+    return u
+
+def complex_advection_1d(x):
+    def initializer(U):
+        U[0, :] = complex_profile(x)
+        return U
+    return initializer
 
 # === Malla y condición inicial ============================================
 x_phys, dx = create_mesh_1d(xmin, xmax, Nx)
 L = xmax - xmin
-init = complex_advection_1d(x_phys)
-U0, _ = create_U0(nvars=1, shape_phys=(Nx,), initializer=init)
+U0, _ = create_U0(nvars=1, shape_phys=(Nx,), initializer=complex_advection_1d(x_phys))
 equation = Advection1D(a=velocity)
 
 # Wrappers -----------------------------------------------------------------
@@ -78,11 +100,10 @@ times    = np.asarray(times)
 
 # === Solución exacta para cada t ==========================================
 analytical = []
-u_init = complex_advection_1d(x_phys)  # perfil inicial
 
 for t in times:
-    shift = (x_phys - velocity * t - xmin) % L + xmin
-    ua = complex_advection_1d(shift)
+    shift = ((x_phys - velocity * t - xmin) % L) + xmin
+    ua = complex_profile(shift)
     analytical.append(ua)
 
 analytical = np.asarray(analytical)
@@ -92,14 +113,21 @@ u_num = frames_u[-1]
 u_exa = analytical[-1]
 
 plt.figure(figsize=(10, 5))
-plt.plot(x_phys, u_num, 'o', ms=3, label="Numérico")
-plt.plot(x_phys, u_exa, '-', lw=2, label="Exacto")
+
+# Dibujar primero la línea exacta para que no se tape
+plt.plot(x_phys, u_exa, '-', lw=1, color='k', label="Exacto")
+
+# Dibujar los puntos numéricos con tamaño pequeño y borde negro
+plt.plot(x_phys, u_num, 'o', ms=4, color='green', markeredgecolor='k', label="Numérico")
+
 plt.xlabel("x")
 plt.ylabel("u(x,t)")
-plt.title(f"Advección 1D – t = {tf}")
+plt.title(f"Advección 1D compleja – t = {tf}")
 plt.legend()
+#plt.grid(True, linestyle='--', alpha=0.4)
 plt.tight_layout()
 
+# Guardar imagen
 png_path = f"videos/{prefix}_{limiter}_final.png"
 os.makedirs("videos", exist_ok=True)
 plt.savefig(png_path, dpi=300)
@@ -107,9 +135,13 @@ plt.close()
 print(f"[INFO] Figura final guardada en {png_path}")
 
 # === Animación ============================================================
-fig, ax = plt.subplots(figsize=(10, 4))
-ln_num, = ax.plot(x_phys, frames_u[0], lw=2, label="Num")
-ln_exa, = ax.plot(x_phys, analytical[0], '--', lw=2, label="Exacto")
+fig, ax = plt.subplots(figsize=(10, 5))
+
+# Primero la curva exacta
+ln_exa, = ax.plot(x_phys, analytical[0], '-', lw=1, color='k', label="Exacto")
+
+# Luego los puntos numéricos con buen contraste
+ln_num, = ax.plot(x_phys, frames_u[0], 'o', ms=4, color='green', markeredgecolor='k', label="Numérico")
 
 ax.set_xlim(xmin, xmax)
 ax.set_ylim(-0.2, 1.2)

@@ -63,7 +63,7 @@ RK4(dUdt_func=dUdt,
 # === Leer todos los CSV ===================================================
 pat = f"data/{prefix}_{limiter}_*.csv"
 csv_files = sorted(glob.glob(pat),
-                   key=lambda f: int(re.search(r"_(\d{5})\.csv$", f).group(1)))
+                   key=lambda f: int(re.search(r"_(\d{6})\.csv$", f).group(1)))
 
 frames_rho, frames_v, frames_P, frames_e = [], [], [], []
 times = []

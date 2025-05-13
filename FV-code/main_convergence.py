@@ -14,12 +14,12 @@ from utils              import create_mesh_1d, create_U0
 from write              import setup_data_folder
 
 # ── parámetros globales ─────────────────────────────────────────────────
-xmin, xmax = 0.0, 1.0
+xmin, xmax = 0.0, 2.0
 a          = 1.0
-tf         = 0.3
+tf         = 1.0
 solver_name = "exact"
-limiters    = ["mc", "mp5"]
-Ns          = [40, 80, 160, 320]
+limiters    = ["mc", "superbee", "mp5", "weno3", "weno5", "wenoz"]
+Ns          = [40, 80, 160, 320, 620, 1249]
 L           = xmax - xmin
 
 setup_data_folder("data")

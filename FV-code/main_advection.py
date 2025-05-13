@@ -20,12 +20,12 @@ from utils              import create_mesh_1d, create_U0
 from write              import setup_data_folder
 
 # === Parámetros ===========================================================
-Nx      = 400
+Nx      = 200
 xmin, xmax = 0.0, 1.0
-tf      = 100.0
+tf      = 2.0
 cfl     = 0.1
 velocity = 1.0
-limiter = "mp5"
+limiter = "mc"
 solver = "exact"
 prefix  = "advection_1d"
 
@@ -53,7 +53,7 @@ RK4(dUdt_func=dUdt,
     x=x_phys, y=None,
     bc_x=("periodic", "periodic"),
     cfl=cfl,
-    save_every=1000,
+    save_every=10,
     filename=prefix,
     reconst=limiter)
 
