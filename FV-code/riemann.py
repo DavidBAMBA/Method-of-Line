@@ -65,28 +65,25 @@ def _amax_by_axis(U, eq, axis):
         raise ValueError("axis debe ser None, 0 o 1")
 
 def _velocity_by_axis(U, axis):
-    """Velocidad física del fluido (supone sistema tipo Euler)."""
     rho = U[0]
     if axis in (None, 0):
-        rhovx = U[1]
-        return rhovx / rho
+        rhov = U[1]
     elif axis == 1:
-        rhovy = U[2]
-        return rhovy / rho
+        rhov = U[2]
     else:
         raise ValueError("axis debe ser None, 0 o 1")
+    return rhov / rho
 
 def riemann_hll(UL, UR, eq, axis=None):
     """
-    HLL refinado para sistemas tipo Euler:
-    - Usa v±c
-    - Protección contra división por cero
+    HLL para sistemas tipo Euler en 1D o 2D.
     """
     FL = _flux_by_axis(UL, eq, axis)
     FR = _flux_by_axis(UR, eq, axis)
 
     vL = _velocity_by_axis(UL, axis)
     vR = _velocity_by_axis(UR, axis)
+
     cL = _amax_by_axis(UL, eq, axis)
     cR = _amax_by_axis(UR, eq, axis)
 
@@ -104,74 +101,99 @@ def riemann_hll(UL, UR, eq, axis=None):
 # ------------------------------------------------------------
 # 4.  HLLC (tres ondas)
 # ------------------------------------------------------------
-# ------------------------------------------------------------
-# 4.  HLLC (tres ondas)  – versión con broadcasting correcto
-# ------------------------------------------------------------
 def riemann_hllc(UL, UR, eq, axis=None):
     """
-    HLLC (tres ondas).  Basado en Batten et al. (1997).
-    Calcula los flujos considerando las ondas izquierda, de contacto y derecha.
-    Compatible con Euler 1-D/2-D: usa flux_x/flux_y y _pressure de la ecuación.
+    HLLC adaptable para 1D (Euler1D) y 2D (Euler2D). Basado en Batten et al.
     """
     FL = _flux_by_axis(UL, eq, axis)
     FR = _flux_by_axis(UR, eq, axis)
 
-    # ----------  variables primitivas ----------
     rhoL, rhoR = UL[0], UR[0]
-    if axis in (None, 0):            # eje x
-        uL_n, uR_n = UL[1]/rhoL, UR[1]/rhoR   # velocidad normal
-        uL_t, uR_t = UL[2]/rhoL, UR[2]/rhoR   # velocidad tangencial
-    elif axis == 1:                  # eje y
-        uL_n, uR_n = UL[2]/rhoL, UR[2]/rhoR
-        uL_t, uR_t = UL[1]/rhoL, UR[1]/rhoR
-    else:
-        raise ValueError("axis debe ser None, 0 o 1")
-
-    pL = eq._pressure(UL)
-    pR = eq._pressure(UR)
     gamma = getattr(eq, "gamma", 1.4)
-    cL = np.sqrt(gamma * pL / rhoL)
-    cR = np.sqrt(gamma * pR / rhoR)
 
-    # ---------- 1. Velocidades de onda exteriores ----------
-    sL = np.minimum(uL_n - cL, uR_n - cR)
-    sR = np.maximum(uL_n + cL, uR_n + cR)
+    if UL.shape[0] == 3:  # ← Euler1D
+        momL, momR = UL[1], UR[1]
+        vL = momL / rhoL
+        vR = momR / rhoR
+        pL = eq._pressure(UL)
+        pR = eq._pressure(UR)
 
-    # ---------- 2. Velocidad de contacto ----------
-    denom = rhoL*(sL - uL_n) - rhoR*(sR - uR_n)
-    sM = (pR - pL + rhoL*uL_n*(sL - uL_n) - rhoR*uR_n*(sR - uR_n))
-    sM = np.where(denom != 0, sM / denom, 0.5*(uL_n + uR_n))
+        cL = np.sqrt(gamma * pL / rhoL)
+        cR = np.sqrt(gamma * pR / rhoR)
 
-    # ---------- 3. Estados estrella ----------
-    rho_star_L = rhoL * (sL - uL_n) / (sL - sM)
-    rho_star_R = rhoR * (sR - uR_n) / (sR - sM)
-    p_star = pL + rhoL*(sL - uL_n)*(sM - uL_n)
+        sL = np.minimum(vL - cL, vR - cR)
+        sR = np.maximum(vL + cL, vR + cR)
 
-    E_star_L = p_star/(gamma - 1) + 0.5*rho_star_L*(sM**2 + uL_t**2)
-    E_star_R = p_star/(gamma - 1) + 0.5*rho_star_R*(sM**2 + uR_t**2)
+        denom = rhoL * (sL - vL) - rhoR * (sR - vR)
+        sM_num = pR - pL + rhoL * vL * (sL - vL) - rhoR * vR * (sR - vR)
+        sM = np.where(np.abs(denom) > 1e-12, sM_num / denom, 0.5 * (vL + vR))
 
-    U_star_L = np.empty_like(UL)
-    U_star_R = np.empty_like(UR)
-    U_star_L[0] = rho_star_L
-    U_star_R[0] = rho_star_R
-    if axis in (None, 0):
-        U_star_L[1] = rho_star_L * sM
-        U_star_R[1] = rho_star_R * sM
-        U_star_L[2] = rho_star_L * uL_t
-        U_star_R[2] = rho_star_R * uR_t
-    else:  # eje y
-        U_star_L[1] = rho_star_L * uL_t
-        U_star_R[1] = rho_star_R * uR_t
-        U_star_L[2] = rho_star_L * sM
-        U_star_R[2] = rho_star_R * sM
-    U_star_L[3] = E_star_L
-    U_star_R[3] = E_star_R
+        rho_star_L = rhoL * (sL - vL) / (sL - sM)
+        rho_star_R = rhoR * (sR - vR) / (sR - sM)
+        p_star = pL + rhoL * (sL - vL) * (sM - vL)
+
+        E_star_L = p_star / (gamma - 1) + 0.5 * rho_star_L * sM**2
+        E_star_R = p_star / (gamma - 1) + 0.5 * rho_star_R * sM**2
+
+        U_star_L = np.array([rho_star_L,
+                             rho_star_L * sM,
+                             E_star_L])
+        U_star_R = np.array([rho_star_R,
+                             rho_star_R * sM,
+                             E_star_R])
+
+    elif UL.shape[0] == 4:  # ← Euler2D
+        if axis in (None, 0):  # eje x
+            uL_n, uR_n = UL[1] / rhoL, UR[1] / rhoR
+            uL_t, uR_t = UL[2] / rhoL, UR[2] / rhoR
+        else:  # eje y
+            uL_n, uR_n = UL[2] / rhoL, UR[2] / rhoR
+            uL_t, uR_t = UL[1] / rhoL, UR[1] / rhoR
+
+        pL = eq._pressure(UL)
+        pR = eq._pressure(UR)
+        cL = np.sqrt(gamma * pL / rhoL)
+        cR = np.sqrt(gamma * pR / rhoR)
+
+        sL = np.minimum(uL_n - cL, uR_n - cR)
+        sR = np.maximum(uL_n + cL, uR_n + cR)
+
+        denom = rhoL * (sL - uL_n) - rhoR * (sR - uR_n)
+        sM = (pR - pL + rhoL * uL_n * (sL - uL_n) - rhoR * uR_n * (sR - uR_n))
+        sM = np.where(denom != 0, sM / denom, 0.5 * (uL_n + uR_n))
+
+        rho_star_L = rhoL * (sL - uL_n) / (sL - sM)
+        rho_star_R = rhoR * (sR - uR_n) / (sR - sM)
+        p_star = pL + rhoL * (sL - uL_n) * (sM - uL_n)
+
+        E_star_L = p_star / (gamma - 1) + 0.5 * rho_star_L * (sM**2 + uL_t**2)
+        E_star_R = p_star / (gamma - 1) + 0.5 * rho_star_R * (sM**2 + uR_t**2)
+
+        U_star_L = np.empty_like(UL)
+        U_star_R = np.empty_like(UR)
+        U_star_L[0] = rho_star_L
+        U_star_R[0] = rho_star_R
+        if axis in (None, 0):
+            U_star_L[1] = rho_star_L * sM
+            U_star_R[1] = rho_star_R * sM
+            U_star_L[2] = rho_star_L * uL_t
+            U_star_R[2] = rho_star_R * uR_t
+        else:
+            U_star_L[1] = rho_star_L * uL_t
+            U_star_R[1] = rho_star_R * uR_t
+            U_star_L[2] = rho_star_L * sM
+            U_star_R[2] = rho_star_R * sM
+        U_star_L[3] = E_star_L
+        U_star_R[3] = E_star_R
+
+    else:
+        raise ValueError("Formato de estado U no reconocido para riemann_hllc")
 
     F_star_L = FL + sL * (U_star_L - UL)
     F_star_R = FR + sR * (U_star_R - UR)
 
-    # ---------- 4. Selección del flujo ----------
-    sL_ext = sL[np.newaxis, ...]   #  (1, Nx[,Ny])
+    # broadcasting
+    sL_ext = sL[np.newaxis, ...]
     sR_ext = sR[np.newaxis, ...]
     sM_ext = sM[np.newaxis, ...]
 

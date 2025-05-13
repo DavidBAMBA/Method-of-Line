@@ -1,103 +1,107 @@
+# main_sod_2d.py  ──────────────────────────────────────────────────────────
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation, FFMpegWriter
-import os
+from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
+import os, glob, re
 
-# ── módulos propios ───────────────────────────────────────────
-from equations import Euler2D
+# --- módulos del proyecto -------------------------------------------------
+from config             import NGHOST
+from equations          import Euler2D
 from initial_conditions import sod_shock_tube_2d
-from solver import RK4, dUdt
-from reconstruction import reconstruct
-from riemann import solve_riemann
-from utils import create_mesh_2d, create_U0
-from boundary import dirichlet_sod, periodic
-# ──────────────────────────────────────────────────────────────
+from solver             import RK4, dUdt
+from reconstruction     import reconstruct
+from riemann            import solve_riemann
+from utils              import create_mesh_2d, create_U0
+from write              import setup_data_folder
 
-# ── parámetros ────────────────────────────────────────────────
-Nx, Ny     = 200, 100
-xmin, xmax = 0.0, 1.0
-ymin, ymax = 0.0, 1.0
-tf, cfl    = 0.2, 0.5
-limiter    = "mp5"      # "mc" o "superbee"
-solver     = "hll"     # "hllc" o "hll"
-gamma      = 1.4
-# ──────────────────────────────────────────────────────────────
+# ═════════════════════════════════  parámetros  ═══════════════════════════
+Nx, Ny        = 300, 150
+xmin, xmax    = 0.0, 1.0
+ymin, ymax    = 0.0, 1.0
+tf            = 0.2
+cfl           = 0.4
+limiter       = "mp5"
+riemann_name  = "hllc"
+gamma         = 1.4
+prefix        = "sod2d"
 
-# ── malla y condición inicial ────────────────────────────────
-x, y, dx, dy = create_mesh_2d(xmin, xmax, Nx, ymin, ymax, Ny)
-init2d = sod_shock_tube_2d(x, y, x0=0.5)
-U0 = create_U0(nvars=4, shape=(Nx, Ny), initializer=init2d)
-equation = Euler2D(gamma)
+# ═══════════════════════════════ malla + IC ═══════════════════════════════
+x_phys, y_phys, dx, dy = create_mesh_2d(xmin, xmax, Nx, ymin, ymax, Ny)
+initializer            = sod_shock_tube_2d(x_phys, y_phys, x0=0.5)
+U0, phys               = create_U0(nvars=4, shape_phys=(Nx, Ny), initializer=initializer)
+equation               = Euler2D(gamma=gamma)
 
-# ── reconstrucción y condiciones de frontera ─────────────────
-recon = lambda U, dx, axis: reconstruct(U, dx, limiter=limiter, axis=axis)
+recon   = lambda U, d, axis=None: reconstruct(U, d, limiter=limiter, axis=axis)
+riemann = lambda UL, UR, eq, axis=None: solve_riemann(UL, UR, eq, axis, solver=riemann_name)
 
-def periodic_y(U):
-    """Periodicidad solo en y (extremos en x fijos)."""
-    U[:, :, 0]  = U[:, :, -2]
-    U[:, :, -1] = U[:, :,  1]
-    return U
-
-def bc(U):
-    U = dirichlet_sod(U)  # extremos x fijos
-    U = periodic_y(U)     # extremos y periódicos
-    return U
-
-riemann_solver = lambda UL, UR, eq, axis: solve_riemann(UL, UR, eq, axis, solver=solver)
-
-# ── integración temporal ─────────────────────────────────────
+# ═════════════════════════════ simulación ════════════════════════════════
+setup_data_folder("data")
 os.makedirs("videos", exist_ok=True)
 
-times, sol = RK4(dUdt_func=dUdt,
-                 boundary_func=bc,
-                 t0=0.0, U0=U0, tf=tf,
-                 dx=dx, dy=dy,
-                 equation=equation,
-                 reconstruct=recon,
-                 riemann_solver=solve_riemann,
-                 cfl=cfl)
+print(f"[INFO] Sod 2-D • limiter={limiter.upper()} • solver={riemann_name.upper()} • NGHOST={NGHOST}")
 
-# ── posprocesado: promedio en y ──────────────────────────────
-rho_series = sol[:, 0].mean(axis=2)  # (nt, Nx)
-momx_series = sol[:, 1].mean(axis=2)
-vx_series   = momx_series / rho_series
-E_series    = sol[:, 3].mean(axis=2)
-P_series    = (gamma-1)*(E_series - 0.5*rho_series*vx_series**2)
+RK4(dUdt_func=dUdt,
+    t0=0.0, U0=U0, tf=tf,
+    dx=dx, dy=dy,
+    equation=equation,
+    reconstruct=recon,
+    riemann_solver=riemann,
+    x=x_phys, y=y_phys,
+    bc_x=("outflow", "outflow"),
+    bc_y=("periodic", "periodic"),
+    cfl=cfl,
+    save_every=10,
+    filename=prefix,
+    reconst=limiter)
 
-# ── gráfico final ────────────────────────────────────────────
-plt.figure(figsize=(10,6))
-plt.plot(x, rho_series[-1], label='ρ (densidad)')
-plt.plot(x, vx_series[-1],  label='v (velocidad)')
-plt.plot(x, P_series[-1],   label='P (presión)')
-plt.xlabel("$x$"); plt.ylabel("Magnitud")
-plt.title(f"Sod 2-D (promedio en y) – $t={tf}$")
-plt.legend(); plt.tight_layout()
-plt.savefig("videos/sod_2d_projection_avg_1d.png")
-plt.show()
+# ═══════════════════════════  carga de CSVs  ══════════════════════════════
+def _step(fname):
+    return int(re.search(r"_(\d{5})\.csv$", fname).group(1))
 
-# ── animación ────────────────────────────────────────────────
-fig, ax = plt.subplots(figsize=(10,5))
-l_rho, = ax.plot(x, rho_series[0], label='ρ')
-l_v,   = ax.plot(x, vx_series[0],  label='v')
-l_P,   = ax.plot(x, P_series[0],   label='P')
+csv_files = sorted(glob.glob(f"data/{prefix}_{limiter}_*.csv"), key=_step)
 
+frames_rho, times = [], []
+for f in csv_files:
+    data   = np.loadtxt(f, delimiter=",", skiprows=1)
+    t_real = data[0, -1]
+    rho    = data[:, 2].reshape((Nx, Ny))  # columnas: x, y, rho, v, P, time
+    frames_rho.append(rho)
+    times.append(t_real)
+
+frames_rho = np.asarray(frames_rho)
+times      = np.array(times)
+# ══════════════════════  estado final 1-D (y = 0.5)  ═════════════════════
+j = np.argmin(np.abs(y_phys - 0.5))
+rho_slice = frames_rho[-1][:, j]
+
+plt.figure(figsize=(6, 4))
+plt.plot(x_phys, rho_slice, color='tab:blue')
+plt.xlabel("x"); plt.ylabel("ρ(x, y=0.5)")
+plt.title("Corte de densidad final en y = 0.5")
+plt.xlim(xmin, xmax); plt.ylim(0, rho_slice.max()*1.1)
+plt.tight_layout()
+png_slice = f"videos/{prefix}_slice_y05_final.png"
+plt.savefig(png_slice, dpi=300); plt.close()
+print(f"[INFO] Corte final 1-D guardado en {png_slice}")
+
+# ══════════════════════  animación 1-D de la evolución  ══════════════════
+fig, ax = plt.subplots(figsize=(6, 4))
+line, = ax.plot([], [], color='tab:red')
 ax.set_xlim(xmin, xmax)
-ax.set_ylim(0, max(rho_series.max(), P_series.max()) * 1.1)
-ax.set_xlabel("$x$")
-ax.set_ylabel("Magnitud")
-ax.set_title("Sod 2-D - evolución (promedio en y)")
-ax.legend()
+ax.set_ylim(0, frames_rho.max()*1.05)
+ax.set_xlabel("x")
+ax.set_ylabel("ρ(x, y=0.5)")
+ax.set_title("Evolución de ρ en y = 0.5")
 
-def update(frame):
-    l_rho.set_ydata(rho_series[frame])
-    l_v.set_ydata(vx_series[frame])
-    l_P.set_ydata(P_series[frame])
-    ax.set_title(f"Sod 2-D - t = {times[frame]:.3f}")
-    return l_rho, l_v, l_P
+def _update_1d(k):
+    line.set_data(x_phys, frames_rho[k][:, j])
+    ax.set_title(f"ρ(x, y=0.5) – t = {times[k]:.3f}")
+    return line,
 
-ani = FuncAnimation(fig, update, frames=len(times), interval=40, blit=True)
-writer = FFMpegWriter(fps=25, bitrate=1800)
-ani.save("videos/sod_2d_projection_avg_1d.mp4", writer=writer)
+ani1d = FuncAnimation(fig, _update_1d, frames=len(frames_rho),
+                      interval=40, blit=True)
+vid_1d = f"videos/{prefix}_rho_1d_evol.mp4"
+ani1d.save(vid_1d, writer=FFMpegWriter(fps=25, bitrate=1800))
 plt.close(fig)
-
-print("\nGráfica y animación guardadas en carpeta 'videos/' ✅")
+print(f"[INFO] Animación 1-D guardada en {vid_1d}")
