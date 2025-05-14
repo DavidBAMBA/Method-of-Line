@@ -1,7 +1,7 @@
 # main_convergencia_parallel.py
 import numpy as np
 import matplotlib.pyplot as plt
-import os, glob, re, shutil
+import os, glob, re
 import multiprocessing as mp
 
 # ── módulos del proyecto ────────────────────────────────────────────────
@@ -14,15 +14,16 @@ from utils              import create_mesh_1d, create_U0
 from write              import setup_data_folder
 
 # ── parámetros globales ─────────────────────────────────────────────────
-xmin, xmax = 0.0, 2.0
-a          = 1.0
-tf         = 1.0
+xmin, xmax  = 0.0, 1.0
+a           = 1.0
+tf          = 1.0
 solver_name = "exact"
-limiters    = ["mc", "superbee", "mp5", "weno3", "weno5", "wenoz"]
+limiters    = ["mc", "minmod", "weno3", "mp5", "weno5", "wenoz"]
 Ns          = [40, 80, 160, 320, 620, 1249]
 L           = xmax - xmin
 
 setup_data_folder("data")
+os.makedirs("errors", exist_ok=True)
 
 _extract_step = lambda f: int(re.search(r"_(\d+)\.csv$", f).group(1)) if re.search(r"_(\d+)\.csv$", f) else -1
 
@@ -39,8 +40,7 @@ def run_simulation_parallel(args):
     eq         = Advection1D(a=a)
 
     recon = lambda U, d, axis=None: reconstruct(U, d, limiter=limiter, axis=axis)
-    riem  = lambda UL, UR, eq_, axis=None: solve_riemann(UL, UR, eq_, axis,
-                                                         solver=solver_name)
+    riem  = lambda UL, UR, eq_, axis=None: solve_riemann(UL, UR, eq_, axis, solver=solver_name)
 
     fixed_step = 0.1 * dx * dx
 
@@ -57,24 +57,24 @@ def run_simulation_parallel(args):
         filename=prefix,
         reconst=limiter)
 
+    # Leer último CSV generado
     csv_files = sorted(glob.glob(f"data/{prefix}_*.csv"), key=_extract_step)
-    frames_u, frames_exact, times = [], [], []
-    for f in csv_files:
-        dat     = np.loadtxt(f, delimiter=",", skiprows=1)
-        x_d, u_d, t_real = dat[:, 0], dat[:, 1], dat[0, -1]
-        x_shift = np.mod(x_d - a * t_real - xmin, L) + xmin
-        u_ex = gaussian_exact(x_shift)
+    if not csv_files:
+        print(f"[ERROR] No CSV found for {prefix}")
+        return (limiter, Nx, np.nan, np.nan, np.nan)
 
-        frames_u.append(u_d)
-        frames_exact.append(u_ex)
-        times.append(t_real)
+    data = np.loadtxt(csv_files[-1], delimiter=",", skiprows=1)
+    x_d, u_d, t_real = data[:, 0], data[:, 1], data[0, -1]
+    x_shift = np.mod(x_d - a * t_real - xmin, L) + xmin
+    u_ex = gaussian_exact(x_shift)
 
-    err      = frames_u[-1] - frames_exact[-1]
+    err = u_d - u_ex
+    err_L1   = np.mean(np.abs(err))
     err_L2   = np.sqrt(np.mean(err**2))
     err_Linf = np.max(np.abs(err))
 
-    print(f"[DONE] {limiter.upper()}  Nx={Nx}  L2={err_L2:.2e}  L∞={err_Linf:.2e}")
-    return (limiter, Nx, err_L2, err_Linf)
+    print(f"[DONE] {limiter.upper()}  Nx={Nx}  L1={err_L1:.2e}  L2={err_L2:.2e}  L∞={err_Linf:.2e}")
+    return (limiter, Nx, err_L1, err_L2, err_Linf)
 
 # ────────────────────────────────────────────────────────────────────────
 def main():
@@ -82,37 +82,64 @@ def main():
     with mp.Pool(processes=mp.cpu_count()) as pool:
         results = pool.map(run_simulation_parallel, tasks)
 
-    # Reorganizar resultados
-    errors_L2 = {lim: [] for lim in limiters}
-    errors_Linf = {lim: [] for lim in limiters}
+    # Estructuras de errores
+    errors_by_limiter = {lim: [] for lim in limiters}
 
-    for lim, Nx, e2, ei in results:
-        errors_L2[lim].append((Nx, e2))
-        errors_Linf[lim].append((Nx, ei))
+    for lim, Nx, e1, e2, ei in results:
+        errors_by_limiter[lim].append((Nx, e1, e2, ei))
 
-    # Gráfica de convergencia
-    fig, axs = plt.subplots(1, 2, figsize=(13,5))
-    for ax, (lbl, err_dict) in zip(axs, [("L2", errors_L2), ("L∞", errors_Linf)]):
+    # Guardar errores L1, L2, Linf en CSVs separados
+    for i, norm_name in enumerate(["L1", "L2", "Linf"]):
+        with open(f"errors/errors_{norm_name}.csv", "w") as f:
+            f.write("Limiter,Nx,Error\n")
+            for lim in limiters:
+                for entry in sorted(errors_by_limiter[lim]):
+                    Nx = entry[0]
+                    error = entry[i + 1]
+                    f.write(f"{lim},{Nx},{error:.8e}\n")
+
+    # Calcular órdenes y guardar tabla
+    tabla = []
+    print("\n=== Tabla de errores y órdenes por reconstructor ===")
+    print(f"{'Limiter':<8} {'Nx':>5} {'L1':>10} {'L2':>10} {'Linf':>10}  {'p_L1':>6} {'p_L2':>6} {'p_Inf':>6}")
+
+    with open("errors/convergencia_ordenes.csv", "w") as fcsv:
+        fcsv.write("Limiter,Nx,L1,L2,Linf,p_L1,p_L2,p_Linf\n")
         for lim in limiters:
-            Ns_sorted, errs = zip(*sorted(err_dict[lim]))
-            h   = 1.0 / np.array(Ns_sorted)
-            lnH = np.log(h); lnE = np.log(errs)
-            p   = -np.polyfit(lnH, lnE, 1)[0]
+            rows = sorted(errors_by_limiter[lim])
+            prev = None
+            for i, (Nx, L1, L2, Linf) in enumerate(rows):
+                if prev is None:
+                    p1 = p2 = pInf = ""
+                else:
+                    h1, h2 = 1.0 / prev[0], 1.0 / Nx
+                    p1   = (np.log(prev[1]) - np.log(L1)) / (np.log(h1) - np.log(h2))
+                    p2   = (np.log(prev[2]) - np.log(L2)) / (np.log(h1) - np.log(h2))
+                    pInf = (np.log(prev[3]) - np.log(Linf)) / (np.log(h1) - np.log(h2))
+                    p1, p2, pInf = f"{p1:.2f}", f"{p2:.2f}", f"{pInf:.2f}"
 
-            ax.loglog(h, errs, 'o-', label=f"{lim.upper()}  p≈{p:.2f}")
-            print(f"\n[ {lim.upper()} - norma {lbl} ]  orden global ≈ {p:.4f}")
-            for i in range(1, len(Ns_sorted)):
-                p_loc = (lnE[i-1] - lnE[i]) / (lnH[i-1] - lnH[i])
-                print(f"  Nx {Ns_sorted[i-1]:4d}->{Ns_sorted[i]:4d}  p≈{p_loc:.4f}")
+                print(f"{lim:<8} {Nx:5d} {L1:10.2e} {L2:10.2e} {Linf:10.2e}  {p1:>6} {p2:>6} {pInf:>6}")
+                fcsv.write(f"{lim},{Nx},{L1:.8e},{L2:.8e},{Linf:.8e},{p1},{p2},{pInf}\n")
+                tabla.append([lim.upper(), Nx, L1, L2, Linf, p1, p2, pInf])
+                prev = (Nx, L1, L2, Linf)
 
-        ax.set_xlabel("h = 1/Nx"); ax.set_ylabel(f"Error {lbl}")
-        ax.set_title(f"Convergencia ({lbl})")
-        ax.grid(True, which="both", ls="--", alpha=0.5)
-        ax.invert_xaxis(); ax.legend()
-
+    # Tabla como imagen
+    import pandas as pd
+    df = pd.DataFrame(tabla,
+                      columns=["Limiter", "Nx", "L1", "L2", "Linf", "p_L1", "p_L2", "p_Linf"])
+    fig, ax = plt.subplots(figsize=(12, len(df)*0.4))
+    ax.axis('off')
+    tabla_mpl = ax.table(cellText=df.values,
+                         colLabels=df.columns,
+                         cellLoc='center',
+                         loc='center')
+    tabla_mpl.auto_set_font_size(False)
+    tabla_mpl.set_fontsize(10)
+    tabla_mpl.scale(1, 1.5)
     plt.tight_layout()
-    plt.savefig("convergencia_L2_Linf.png", dpi=300)
-    plt.show()
+    plt.savefig("convergencia_tabla.png", dpi=300)
+    plt.close()
+    print("[INFO] Tabla guardada en 'convergencia_tabla.png' y 'errors/convergencia_ordenes.csv'")
 
 # ────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":

@@ -395,41 +395,46 @@ def mp5_faces(U, dx, alpha=4.0, eps=1e-6):
     return vl, vr   # ambas de longitud Nx-1
 
 
-
-
-def _weno3_coeffs(a_m1, a_0, a_p1):
-    beta0 = (a_p1 - a_0) ** 2
-    beta1 = (a_0  - a_m1) ** 2
-    eps   = 1.0e-12
+def _weno3_left(am1, a0, ap1):
+    """Reconstrucción desde la izquierda hacia i+1/2"""
+    beta0 = (ap1 - a0)**2
+    beta1 = (a0  - am1)**2
+    eps = 1e-12
     alpha0 = (2/3) / (eps + beta0)**2
     alpha1 = (1/3) / (eps + beta1)**2
     w0 = alpha0 / (alpha0 + alpha1)
-    w1 = 1.0  - w0
-    u0 =  0.5*a_0 + 0.5*a_p1          # est. polinomio 0
-    u1 = -0.5*a_m1 + 1.5*a_0          # est. polinomio 1
+    w1 = 1.0 - w0
+    u0 = 0.5*a0 + 0.5*ap1
+    u1 = -0.5*am1 + 1.5*a0
     return w0*u0 + w1*u1
 
-def _weno3_faces_1d(U):
+def _weno3_right(a0, ap1, ap2):
+    """Reconstrucción desde la derecha hacia i-1/2"""
+    beta0 = (ap1 - ap2)**2
+    beta1 = (a0  - ap1)**2
+    eps = 1e-12
+    alpha0 = (1/3) / (eps + beta0)**2
+    alpha1 = (2/3) / (eps + beta1)**2
+    w0 = alpha0 / (alpha0 + alpha1)
+    w1 = 1.0 - w0
+    u0 = 1.5*ap1 - 0.5*ap2
+    u1 = 0.5*a0 + 0.5*ap1
+    return w0*u0 + w1*u1
 
+def weno3_faces(U):
     if NGHOST < 1:
         raise ValueError("WENO3 requiere ≥1 ghost cell")
-    # índices convenientes
-    a_m1 = U[:-2]   # i-1
-    a_0  = U[1:-1]  # i
-    a_p1 = U[2:]    # i+1
-    # izquierda de i+½   con stencil i-1,i,i+1
-    vl = _weno3_coeffs(a_m1, a_0, a_p1)
-    # derecha de i-½  (equivalente, espejo)
-    # para cara i-½ usamos celdas i-2,i-1,i
-    vr = _weno3_coeffs(a_p1[::-1], a_0[::-1], a_m1[::-1])[::-1]
+
+    # Izquierda de i+1/2 con stencil i-1, i, i+1
+    vl = _weno3_left(U[:-2], U[1:-1], U[2:])
+
+    # Derecha de i-1/2 con stencil i, i+1, i+2
+    vr = _weno3_right(U[:-2], U[1:-1], U[2:])
+
     return vl, vr
-
-def weno3_faces(U, dx):
-    return _weno3_faces_1d(U)
-
 # ─────────────────────────────────────────────────────────────
-# 3.   WENO-5  clásico  (JS)            – ya lo tenías
-#      WENO-Z  (Borges 2008)            – NUEVO
+#   WENO-5  clásico  (JS)           
+#      WENO-Z  (Borges 2008)      
 # ─────────────────────────────────────────────────────────────
 def _weno5_left(u):
     im2, im1, i, ip1, ip2 = u[:-4], u[1:-3], u[2:-2], u[3:-1], u[4:]
@@ -459,7 +464,9 @@ def weno5_faces(U, dx):
     vr = _weno5_right(U)
     return vl, vr                   # longitud Ntot-4
 
-# ----------  WENO-Z  (cambia sólo los pesos) -----------------
+
+#      WENO-Z  (Borges 2008)      
+# ─────────────────────────────────────────────────────────────
 def _wenoZ_left(u):
     im2, im1, i, ip1, ip2 = u[:-4], u[1:-3], u[2:-2], u[3:-1], u[4:]
     beta0 = 13/12*(im2 - 2*im1 + i)**2   + 1/4*(im2 - 4*im1 + 3*i)**2
@@ -515,9 +522,10 @@ def reconstruct(U, dx, *, limiter="minmod", axis=None):
                 UL[k, 1:Nx] = vl[start:stop]
                 UR[k, 1:Nx] = vr[start:stop]
             elif limiter.lower() == "weno3":
-                vl, vr = weno3_faces(Uk, dx)
+                vl, vr = weno3_faces(Uk)
                 start, stop = g-1, g-1 + (Nx-1)
-                UL[k,1:Nx], UR[k,1:Nx] = vl[start:stop], vr[start:stop]
+                UL[k,1:Nx] = vl[start:stop]
+                UR[k,1:Nx] = vr[start:stop]
 
             elif limiter.lower() == "weno5":
                 vl, vr = weno5_faces(Uk, dx)
@@ -531,7 +539,7 @@ def reconstruct(U, dx, *, limiter="minmod", axis=None):
                 UL[k, 1:Nx] = vl[start:stop]
                 UR[k, 1:Nx] = vr[start:stop]
 
-            else:                       # MUSCL lineales
+            else: 
                 slope = slope_full(Uk[g:-g], dx, limiter)
                 UL[k, 1:]  = Uk[g:-g] + 0.5*dx*slope
                 UR[k, :-1] = Uk[g:-g] - 0.5*dx*slope

@@ -1,111 +1,90 @@
-# main_advection_complex.py
+# main_complex_advection_1d_comparison.py
+"""
+Comparación de reconstructores para la advección escalar 1D con perfil complejo.
+Se evalúa la solución numérica final para varios reconstructores contra la solución exacta.
+"""
 
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation, FFMpegWriter
-import os
+import os, glob, re
 
-# --- Módulos propios ---
-from equations import Advection1D
+# ── módulos del proyecto ─────────────────────────────────────────────────
+from config             import NGHOST
+from equations          import Advection1D
+from solver             import RK4, dUdt
+from reconstruction     import reconstruct
+from riemann            import solve_riemann
+from utils              import create_mesh_1d, create_U0
 from initial_conditions import complex_advection_1d
-from solver import RK4, dUdt
-from reconstruction import reconstruct
-from riemann import solve_riemann
-from utils import create_mesh_1d, create_U0
-from boundary import periodic
+from write              import setup_data_folder
 
-# === Parámetros ===
-Nx     = 200
-xmin   = -1.0
-xmax   = 1.0
-tf     = 2.0
-cfl    = 0.1
+# ═════════════════════════════════ PARÁMETROS ═════════════════════════════
+Nx      = 400
+xmin, xmax = -1.0, 1.0
+tf      = 5.0
+cfl     = 0.1
+a       = 1.0
+solver  = "exact"
+limiters = ["mc", "weno3", "mp5", "weno5", "wenoz"]
+prefix  = "complex_advection_compare"
 
-# === Malla y condición inicial ===
-x, dx = create_mesh_1d(xmin, xmax, Nx)
-initializer = complex_advection_1d(x)
-U0 = create_U0(nvars=1, shape=(Nx,), initializer=initializer)
-
-equation = Advection1D(a=1.0)
-bc_func = periodic
-
-# --- Guardamos la condición inicial de referencia ---
-U0_ref = U0.copy()
-
-# === Simulaciones para diferentes limitadores ===
-os.makedirs("videos", exist_ok=True)
-
-limiters = ["minmod", "mc", "mp5"]
-sol_final = {}  # Diccionario: limiter → u(x, tf)
-
-for lim in limiters:
-    recon = lambda U, dx, axis: reconstruct(U, dx, limiter=lim, axis=axis)
-
-    _, sol = RK4(dUdt_func=dUdt,
-                 boundary_func=bc_func,
-                 t0=0.0, U0=U0_ref.copy(), tf=tf,
-                 dx=dx, dy=None,
-                 equation=equation,
-                 reconstruct=recon,
-                 riemann_solver=solve_riemann,
-                 cfl=cfl)
-
-    sol_final[lim] = sol[-1, 0]  # Solo guardar el estado final de cada simulación
-
-# === Solución exacta ========================================
-# === Solución exacta (desplazamiento a·tf, con a = 1) =========
-a = 1.0
-shift = a * tf
+# ══════════════════════════════ MALLA + INICIAL ═══════════════════════════
+x_phys, dx = create_mesh_1d(xmin, xmax, Nx)
 L = xmax - xmin
 
-# desplazo hacia atrás y aplico periodicidad
-x0 = ((x - shift - xmin) % L) + xmin
+initializer = complex_advection_1d(x_phys)
+U0, phys = create_U0(nvars=1, shape_phys=(Nx,), initializer=initializer)
+equation = Advection1D(a=a)
+U0_ref = U0.copy()
 
-# construyo el initializer sobre x0 y lo evalúo
-init_exact = complex_advection_1d(x0)
-U_exact   = init_exact(np.zeros((1, Nx)))   # shape (1,Nx)
-u_exact   = U_exact[0]
+# ═════════════════════════════ SIMULACIONES ══════════════════════════════
+os.makedirs("videos", exist_ok=True)
+setup_data_folder("data")
 
-# === Gráfica comparativa ======================================
+sol_final = {}
+
+for lim in limiters:
+    recon = lambda U, d, axis=None: reconstruct(U, d, limiter=lim, axis=axis)
+    riem  = lambda UL, UR, eq, axis=None: solve_riemann(UL, UR, eq, axis, solver=solver)
+
+    RK4(dUdt_func=dUdt,
+        t0=0.0, U0=U0_ref.copy(), tf=tf,
+        dx=dx, dy=None,
+        equation=equation,
+        reconstruct=recon,
+        riemann_solver=riem,
+        x=x_phys, y=None,
+        bc_x=("periodic", "periodic"),
+        cfl=cfl,
+        save_every=1000,   # solo estado final
+        filename=f"{prefix}_{lim}",
+        reconst=lim)
+
+    # Leer el último CSV generado
+    pat = f"data/{prefix}_{lim}_*.csv"
+    csv_files = sorted(glob.glob(pat),
+                       key=lambda f: int(re.search(r"_(\d{5})\.csv$", f).group(1)))
+    
+    data = np.loadtxt(csv_files[-1], delimiter=",", skiprows=1)
+    u_final = data[:, 1]
+    sol_final[lim] = u_final
+
+# ═════════════════════ SOLUCIÓN EXACTA EN t = tf ═════════════════════════
+shift_x = ((x_phys - a * tf - xmin) % L) + xmin
+u_exact = complex_advection_1d(shift_x)(np.zeros((1, Nx)))[0]
+
+# ══════════════════════ GRÁFICA COMPARATIVA FINAL ════════════════════════
 plt.figure(figsize=(10, 5))
 for lim, style in zip(limiters, ["--", "-.", "-"]):
-    plt.plot(x, sol_final[lim], style, label=f"{lim}")
-plt.plot(x, u_exact, "k:", lw=1.5, label="exacta t = tf")
-plt.xlabel("x"); plt.ylabel("u(x,t)")
-plt.title("Advección compleja – comparación reconstructores vs exacta")
+    plt.plot(x_phys, sol_final[lim], style, label=f"{lim}")
+plt.plot(x_phys, u_exact, "k:", lw=1.5, label="Exacta")
+
+plt.xlabel("x"); plt.ylabel("u(x, t)")
+plt.title("Advección 1D compleja – comparación reconstructores vs exacta")
 plt.legend(); plt.tight_layout()
-plt.savefig("videos/complex_advection_comparison.png")
-plt.show()
 
-
-# === Animación usando MP5 ===
-# (opcional: solo para ver cómo evoluciona la mejor reconstrucción)
-
-recon = lambda U, dx, axis: reconstruct(U, dx, limiter="mp5", axis=axis)
-_, sol = RK4(dUdt_func=dUdt,
-             boundary_func=bc_func,
-             t0=0.0, U0=U0_ref.copy(), tf=tf,
-             dx=dx, dy=None,
-             equation=equation,
-             reconstruct=recon,
-             riemann_solver=solve_riemann,
-             cfl=cfl)
-
-fig, ax = plt.subplots(figsize=(10, 4))
-line, = ax.plot(x, sol[0, 0])
-ax.set_ylim(-0.2, 1.2)
-ax.set_xlim(xmin, xmax)
-ax.set_title("Evolución de advección - MP5")
-ax.set_xlabel("x")
-ax.set_ylabel("u(x,t)")
-
-def update(frame):
-    line.set_ydata(frame[0])
-    return line,
-
-ani = FuncAnimation(fig, update, frames=sol, interval=40, blit=True)
-writer = FFMpegWriter(fps=100, bitrate=1800)
-ani.save("videos/complex_advection_evolution.mp4", writer=writer)
+cmp_path = f"videos/{prefix}_comparison.png"
+plt.savefig(cmp_path, dpi=300)
 plt.close()
-
-print("\n Gráfica comparativa y animación guardadas en 'videos/'")
+print(f"[INFO] Gráfica comparativa guardada en {cmp_path}")
