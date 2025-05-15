@@ -47,10 +47,9 @@ for tag, Nx in cases.items():
         reconstruct=recon,
         riemann_solver=riem,
         x=x_phys, y=None,
-        bc_x=("outflow", "outflow"),
-        reflect_idx=[1],
+        bc_x=("periodic", "periodic"),
         cfl=cfl,
-        save_every=99999,
+        save_every=100,
         filename=prefix,
         reconst=limiter)
 

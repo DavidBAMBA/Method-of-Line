@@ -25,7 +25,7 @@ xmin, xmax = 0.0, 1.0
 tf   = 0.2
 cfl  = 0.1
 gamma   = 1.4
-limiter = "mp5"        # "minmod", "mc", "superbee"
+limiter = "wenoz"        # "minmod", "mc", "superbee"
 riemann = "hllc"       # "hll" ó "hllc"
 prefix  = "sod_1d"
 
@@ -38,9 +38,12 @@ U0, phys   = create_U0(nvars=3, shape_phys=(Nx,),
 equation = Euler1D(gamma=gamma)
 
 # Wrappers -----------------------------------------------------------------
-recon = lambda U, d, axis=None: reconstruct(U, d, limiter=limiter, axis=axis)
+#recon = lambda U, d, axis=None: reconstruct(U, d, limiter=limiter, axis=axis)
 riem  = lambda UL, UR, eq, axis=None: solve_riemann(UL, UR, eq, axis,
                                                     solver=riemann)
+
+recon = lambda U, d, axis=None: reconstruct(U, d, limiter=limiter, axis=axis, periodic=False)
+
 
 # === Simulación ===========================================================
 setup_data_folder("data")
@@ -54,7 +57,6 @@ RK4(dUdt_func=dUdt,
     riemann_solver=riem,
     x=x_phys, y=None,
     bc_x=("outflow", "outflow"),    # fronteras abiertas
-    reflect_idx=[1],                # signo de ρv se invertiría si usas "reflect"
     cfl=cfl,
     save_every=100,
     filename=prefix,
@@ -63,7 +65,7 @@ RK4(dUdt_func=dUdt,
 # === Leer todos los CSV ===================================================
 pat = f"data/{prefix}_{limiter}_*.csv"
 csv_files = sorted(glob.glob(pat),
-                   key=lambda f: int(re.search(r"_(\d{6})\.csv$", f).group(1)))
+                   key=lambda f: int(re.search(r"_(\d{5})\.csv$", f).group(1)))
 
 frames_rho, frames_v, frames_P, frames_e = [], [], [], []
 times = []
@@ -175,5 +177,5 @@ fig.suptitle(f"Sod 1-D • {limiter.upper()} • t = {times[-1]:.4f}")
 plt.tight_layout(rect=[0,0,1,0.96])
 png_final = f"videos/{prefix}_{limiter}.png"
 plt.savefig(png_final, dpi=300)
-plt.close(fig)
+plt.show()
 print(f"[INFO] Figura final guardada en {png_final}")

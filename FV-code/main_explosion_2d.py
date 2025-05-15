@@ -16,36 +16,32 @@ from utils              import create_mesh_2d, create_U0
 from write              import setup_data_folder
 
 # ═════════════════════════════════  parámetros  ═══════════════════════════
-Nx, Ny        = 300, 300          # celdas físicas
+Nx, Ny        = 400, 400          # celdas físicas
 xmin, xmax    = 0.0, 2.0
 ymin, ymax    = 0.0, 2.0
 tf            = 0.15
 cfl           = 0.4
 limiter       = "mp5"
-riemann_name  = "hllc"            # "hll" o "hllc"
+solver        = "hllc"            # "hll" o "hllc"
 gamma         = 1.4
 prefix        = "explosion2d"
 
 # ═══════════════════════════════ malla + IC ═══════════════════════════════
 x_phys, y_phys, dx, dy = create_mesh_2d(xmin, xmax, Nx, ymin, ymax, Ny)
-X,    Y                = np.meshgrid(x_phys, y_phys, indexing='ij')
-
-U_phys_init = explosion_problem_2d(X, Y)              # (4, Nx, Ny)
-
-initializer = lambda U: U.__setitem__(slice(None), U_phys_init)  # rellena in-place
-U0, phys    = create_U0(nvars=4, shape_phys=(Nx, Ny), initializer=initializer)
+init = explosion_problem_2d(x_phys, y_phys)              # (4, Nx, Ny)
+U0, phys = create_U0(nvars=4, shape_phys=(Nx, Ny), initializer=init)
 
 equation = Euler2D(gamma=gamma)
 
-recon   = lambda U, d, axis=None: reconstruct(U, d, limiter=limiter, axis=axis)
+recon   = lambda U, d, axis=None: reconstruct(U, d, limiter=limiter, axis=axis, bc_x="outflow", bc_y="outflow")
 riemann = lambda UL, UR, eq, axis=None: solve_riemann(UL, UR, eq, axis,
-                                                      solver=riemann_name)
+                                                      solver=solver)
 
 # ═════════════════════════════ simulación ════════════════════════════════
 setup_data_folder("data")
 os.makedirs("videos", exist_ok=True)
 
-print(f"[INFO] Explosión 2-D • limiter={limiter.upper()} • solver={riemann_name.upper()} • NGHOST={NGHOST}")
+print(f"[INFO] Explosión 2-D • limiter={limiter.upper()} • solver={solver.upper()} • NGHOST={NGHOST}")
 
 RK4(dUdt_func=dUdt,                 # usa dUdt_high_order si lo prefieres
     t0=0.0, U0=U0, tf=tf,

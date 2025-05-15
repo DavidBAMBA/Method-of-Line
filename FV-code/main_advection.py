@@ -22,12 +22,12 @@ from write              import setup_data_folder
 # === Parámetros ===========================================================
 Nx      = 200
 xmin, xmax = 0.0, 1.0
-tf      = 2.0
+tf      = 5.0
 cfl     = 0.1
 velocity = 1.0
-limiter = "mc"
-solver = "exact"
-prefix  = "advection_1d"
+limiter = "mp5"
+solver = "hll"
+prefix  = "advection_1d_hllc"
 
 # === Malla y condición inicial ============================================
 x_phys, dx = create_mesh_1d(xmin, xmax, Nx)

@@ -3,6 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os, glob, re
 import multiprocessing as mp
+import pandas as pd
 
 # ── módulos del proyecto ────────────────────────────────────────────────
 from equations          import Advection1D
@@ -18,7 +19,7 @@ xmin, xmax  = 0.0, 1.0
 a           = 1.0
 tf          = 1.0
 solver_name = "exact"
-limiters    = ["mc", "minmod", "weno3", "mp5", "weno5", "wenoz"]
+limiters    = ["mp5", "weno5"]
 Ns          = [40, 80, 160, 320, 620, 1249]
 L           = xmax - xmin
 
@@ -101,7 +102,7 @@ def main():
     # Calcular órdenes y guardar tabla
     tabla = []
     print("\n=== Tabla de errores y órdenes por reconstructor ===")
-    print(f"{'Limiter':<8} {'Nx':>5} {'L1':>10} {'L2':>10} {'Linf':>10}  {'p_L1':>6} {'p_L2':>6} {'p_Inf':>6}")
+    print(f"{'Limiter':<8} {'Nx':>5} {'L1':>10} {'L2':>10} {'Linf':>10}  {'p_L1':>7} {'p_L2':>7} {'p_Inf':>7}")
 
     with open("errors/convergencia_ordenes.csv", "w") as fcsv:
         fcsv.write("Limiter,Nx,L1,L2,Linf,p_L1,p_L2,p_Linf\n")
@@ -116,16 +117,25 @@ def main():
                     p1   = (np.log(prev[1]) - np.log(L1)) / (np.log(h1) - np.log(h2))
                     p2   = (np.log(prev[2]) - np.log(L2)) / (np.log(h1) - np.log(h2))
                     pInf = (np.log(prev[3]) - np.log(Linf)) / (np.log(h1) - np.log(h2))
-                    p1, p2, pInf = f"{p1:.2f}", f"{p2:.2f}", f"{pInf:.2f}"
+                    p1, p2, pInf = f"{p1:.3f}", f"{p2:.3f}", f"{pInf:.3f}"
 
-                print(f"{lim:<8} {Nx:5d} {L1:10.2e} {L2:10.2e} {Linf:10.2e}  {p1:>6} {p2:>6} {pInf:>6}")
+                print(f"{lim:<8} {Nx:5d} {L1:10.2e} {L2:10.2e} {Linf:10.2e}  {p1:>7} {p2:>7} {pInf:>7}")
                 fcsv.write(f"{lim},{Nx},{L1:.8e},{L2:.8e},{Linf:.8e},{p1},{p2},{pInf}\n")
                 tabla.append([lim.upper(), Nx, L1, L2, Linf, p1, p2, pInf])
                 prev = (Nx, L1, L2, Linf)
 
-    # Tabla como imagen
-    import pandas as pd
-    df = pd.DataFrame(tabla,
+    # Tabla como imagen (con errores en notación científica)
+
+    tabla_fmt = []
+    for row in tabla:
+        lim, Nx, L1, L2, Linf, p1, p2, pInf = row
+        tabla_fmt.append([
+            lim, Nx,
+            f"{L1:.2e}", f"{L2:.2e}", f"{Linf:.2e}",
+            p1, p2, pInf
+        ])
+
+    df = pd.DataFrame(tabla_fmt,
                       columns=["Limiter", "Nx", "L1", "L2", "Linf", "p_L1", "p_L2", "p_Linf"])
     fig, ax = plt.subplots(figsize=(12, len(df)*0.4))
     ax.axis('off')

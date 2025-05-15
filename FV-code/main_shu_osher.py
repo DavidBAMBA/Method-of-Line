@@ -14,14 +14,14 @@ from write              import setup_data_folder
 
 # ═════════════════════════════════  parámetros  ═══════════════════════════
 cases = {
-    "MP5_300": 300,
-    "MP5_2000": 2000
+    "wenoz_300": 300,
+    "weno_2000": 2000
 }
 xmin, xmax = -5.0, 5.0
 tf         = 1.8
 cfl        = 0.1
 gamma      = 1.4
-limiter    = "mp5"
+limiter    = "wenoz"
 riemann    = "hllc"
 
 # ═════════════════════════════ simulaciones  ══════════════════════════════
@@ -34,10 +34,11 @@ for tag, Nx in cases.items():
     print(f"\n[INFO] Ejecutando {tag} con Nx = {Nx}")
     x_phys, dx = create_mesh_1d(xmin, xmax, Nx)
     init       = shu_osher_1d(x_phys)
-    U0, _      = create_U0(nvars=3, shape_phys=(Nx,), initializer=init)
+    U0, phys      = create_U0(nvars=3, shape_phys=(Nx,), initializer=init)
     eq         = Euler1D(gamma=gamma)
 
-    recon = lambda U, d, axis=None: reconstruct(U, d, limiter=limiter, axis=axis)
+
+    recon = lambda U, d, axis=None: reconstruct(U, d, limiter=limiter, axis=axis, bc_x="outflow")
     riem  = lambda UL, UR, eq_, axis=None: solve_riemann(UL, UR, eq_, axis, solver=riemann)
 
     prefix = f"shu_{tag}"
@@ -49,9 +50,8 @@ for tag, Nx in cases.items():
         riemann_solver=riem,
         x=x_phys, y=None,
         bc_x=("outflow", "outflow"),
-        reflect_idx=[1],
         cfl=cfl,
-        save_every=99999,  # solo guardar último paso
+        save_every=10,  # solo guardar último paso
         filename=prefix,
         reconst=limiter)
 

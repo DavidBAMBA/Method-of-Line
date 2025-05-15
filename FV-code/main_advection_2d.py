@@ -21,7 +21,7 @@ xmin, xmax    = 0.0, 1.0
 ymin, ymax    = 0.0, 1.0
 tf            = 1.0
 cfl           = 0.3
-limiter       = "minmod"
+limiter       = "mp5"
 riemann_name  = "exact"
 prefix        = "advection2d"
 

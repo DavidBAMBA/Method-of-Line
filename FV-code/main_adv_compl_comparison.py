@@ -22,11 +22,11 @@ from write              import setup_data_folder
 # ═════════════════════════════════ PARÁMETROS ═════════════════════════════
 Nx      = 400
 xmin, xmax = -1.0, 1.0
-tf      = 5.0
+tf      = 500.0
 cfl     = 0.1
 a       = 1.0
 solver  = "exact"
-limiters = ["mc", "weno3", "mp5", "weno5", "wenoz"]
+limiters = [ "mp5", "weno5", "wenoz"]
 prefix  = "complex_advection_compare"
 
 # ══════════════════════════════ MALLA + INICIAL ═══════════════════════════
@@ -45,7 +45,7 @@ setup_data_folder("data")
 sol_final = {}
 
 for lim in limiters:
-    recon = lambda U, d, axis=None: reconstruct(U, d, limiter=lim, axis=axis)
+    recon = lambda U, d, axis=None: reconstruct(U, d, limiter=lim, axis=axis, bc_x="periodic")
     riem  = lambda UL, UR, eq, axis=None: solve_riemann(UL, UR, eq, axis, solver=solver)
 
     RK4(dUdt_func=dUdt,
@@ -57,7 +57,7 @@ for lim in limiters:
         x=x_phys, y=None,
         bc_x=("periodic", "periodic"),
         cfl=cfl,
-        save_every=1000,   # solo estado final
+        save_every=10000,   # solo estado final
         filename=f"{prefix}_{lim}",
         reconst=lim)
 

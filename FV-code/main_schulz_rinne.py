@@ -20,22 +20,20 @@ xmin, xmax    = 0.0, 1.0
 ymin, ymax    = 0.0, 1.0
 tf            = 0.25
 cfl           = 0.1
-limiter       = "mc"
+limiter       = "mp5"
 riemann_name  = "hllc"
 gamma         = 1.4
 prefix        = "schulz_rinne"
 
 # ═══════════════════════════════ malla + IC ═══════════════════════════════
 x_phys, y_phys, dx, dy = create_mesh_2d(xmin, xmax, Nx, ymin, ymax, Ny)
-X,    Y                = np.meshgrid(x_phys, y_phys, indexing='ij')
-
-U_phys_init = schulz_rinne_2d(X, Y)
-initializer = lambda U: U.__setitem__(slice(None), U_phys_init)
-U0, phys    = create_U0(nvars=4, shape_phys=(Nx, Ny), initializer=initializer)
+init = schulz_rinne_2d(x_phys, y_phys)
+U0, phys = create_U0(nvars=4, shape_phys=(Nx, Ny), initializer=init)
 
 equation = Euler2D(gamma=gamma)
 
-recon   = lambda U, d, axis=None: reconstruct(U, d, limiter=limiter, axis=axis)
+recon   = lambda U, d, axis=None: reconstruct(U, d, limiter=limiter, axis=axis,
+                                               bc_x="outflow", bc_y="outflow")
 riemann = lambda UL, UR, eq, axis=None: solve_riemann(UL, UR, eq, axis,
                                                       solver=riemann_name)
 
@@ -55,7 +53,7 @@ RK4(dUdt_func=dUdt,
     bc_x=("outflow", "outflow"),
     bc_y=("outflow", "outflow"),
     cfl=cfl,
-    save_every=10,
+    save_every=100,
     filename=prefix,
     reconst=limiter)
 

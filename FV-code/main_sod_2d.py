@@ -32,7 +32,9 @@ initializer            = sod_shock_tube_2d(x_phys, y_phys, x0=0.5)
 U0, phys               = create_U0(nvars=4, shape_phys=(Nx, Ny), initializer=initializer)
 equation               = Euler2D(gamma=gamma)
 
-recon   = lambda U, d, axis=None: reconstruct(U, d, limiter=limiter, axis=axis)
+recon = lambda U, d, axis=None: reconstruct(U, d, limiter=limiter, axis=axis,
+                                            bc_x="outflow", bc_y="periodic")
+
 riemann = lambda UL, UR, eq, axis=None: solve_riemann(UL, UR, eq, axis, solver=riemann_name)
 
 # ═════════════════════════════ simulación ════════════════════════════════

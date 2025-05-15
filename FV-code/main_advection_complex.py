@@ -25,7 +25,7 @@ xmin, xmax = -1.0, 1.0
 tf      = 2.0
 cfl     = 0.1
 velocity = 1.0
-limiter = "mc"
+limiter = "wenoz"
 solver  = "exact"
 prefix  = "complex_advection_1d"
 
@@ -56,11 +56,12 @@ def complex_advection_1d(x):
 # === Malla y condición inicial ============================================
 x_phys, dx = create_mesh_1d(xmin, xmax, Nx)
 L = xmax - xmin
-U0, _ = create_U0(nvars=1, shape_phys=(Nx,), initializer=complex_advection_1d(x_phys))
+init = complex_advection_1d(x_phys)
+U0, phys = create_U0(nvars=1, shape_phys=(Nx,), initializer=init)
 equation = Advection1D(a=velocity)
 
 # Wrappers -----------------------------------------------------------------
-recon = lambda U, d, axis=None: reconstruct(U, d, limiter=limiter, axis=axis)
+recon = lambda U, d, axis=None: reconstruct(U, d, limiter=limiter, axis=axis, bc_x="periodic")
 riem  = lambda UL, UR, eq, axis=None: solve_riemann(UL, UR, eq, axis, solver=solver)
 
 # === Simulación ===========================================================
@@ -118,7 +119,7 @@ plt.figure(figsize=(10, 5))
 plt.plot(x_phys, u_exa, '-', lw=1, color='k', label="Exacto")
 
 # Dibujar los puntos numéricos con tamaño pequeño y borde negro
-plt.plot(x_phys, u_num, 'o', ms=4, color='green', markeredgecolor='k', label="Numérico")
+plt.plot(x_phys, u_num, 'o', ms=4, color='blue', markeredgecolor='k', label="Numérico")
 
 plt.xlabel("x")
 plt.ylabel("u(x,t)")
@@ -141,7 +142,7 @@ fig, ax = plt.subplots(figsize=(10, 5))
 ln_exa, = ax.plot(x_phys, analytical[0], '-', lw=1, color='k', label="Exacto")
 
 # Luego los puntos numéricos con buen contraste
-ln_num, = ax.plot(x_phys, frames_u[0], 'o', ms=4, color='green', markeredgecolor='k', label="Numérico")
+ln_num, = ax.plot(x_phys, frames_u[0], 'o', ms=4, color='blue', markeredgecolor='k', label="Numérico")
 
 ax.set_xlim(xmin, xmax)
 ax.set_ylim(-0.2, 1.2)
