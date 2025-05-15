@@ -9,13 +9,14 @@ from write    import setup_data_folder, save_all_fields
 # ───────────────────────────────────────────────────────────────────────────
 def compute_dt_cfl(U, dx, dy, equation, cfl):
     g = NGHOST
-    if U.ndim == 2:            # 1-D
+    if U.ndim == 2:  # 1D
         max_c = equation.max_wave_speed_x(U[:, g:-g])
         return cfl * dx / np.max(max_c)
-    elif U.ndim == 3:          # 2-D
+    elif U.ndim == 3:  # 2D
         max_cx = equation.max_wave_speed_x(U[:, g:-g, g:-g])
         max_cy = equation.max_wave_speed_y(U[:, g:-g, g:-g])
-        return cfl * min(dx / max_cx, dy / max_cy)
+        max_speed = max(np.max(max_cx), np.max(max_cy))
+        return cfl / max_speed * min(dx, dy)
     else:
         raise ValueError("U debe tener 2 (1D) o 3 (2D) dimensiones.")
 
@@ -67,7 +68,6 @@ def RK4(dUdt_func,
         x, y,
         bc_x=("periodic", "periodic"),
         bc_y=("periodic", "periodic"),
-        *,
         cfl=0.5, gamma=1.4,
         max_steps=10000000,
         save_every=10,

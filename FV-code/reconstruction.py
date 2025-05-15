@@ -1,6 +1,7 @@
 import numpy as np
 from config import NGHOST
 
+
 # ─────────────────────────────────────────────────────────────
 # 1. Utilidades MUSCL
 # ─────────────────────────────────────────────────────────────
@@ -43,7 +44,7 @@ def slope_full(U_phys, dx, limiter="minmod"):
     return out
 
 # ─────────────────────────────────────────────────────────────
-# 2. MP5  (sin cambios)
+# 2. MP5  
 # ─────────────────────────────────────────────────────────────
 def minmod_pair(a, b):
     return np.where(a*b > 0, np.sign(a)*np.minimum(np.abs(a), np.abs(b)), 0.0)
@@ -52,7 +53,7 @@ def minmod4(w, x, y, z):
     s = 0.125*(np.sign(w)+np.sign(x))*np.abs((np.sign(w)+np.sign(y))*(np.sign(w)+np.sign(z)))
     return s*np.min(np.stack([np.abs(w), np.abs(x), np.abs(y), np.abs(z)]), axis=0)
 
-def mp5_faces(U, dx, alpha=4.0, eps=1e-6):
+def mp5_faces(U, alpha=4.0, eps=1e-6):
 
     if NGHOST < 2:
         raise ValueError("MP5 requiere NGHOST ≥ 2")
@@ -102,7 +103,9 @@ def mp5_faces(U, dx, alpha=4.0, eps=1e-6):
 
     return vl, vr   # ambas de longitud Nx-1
 
-
+# ─────────────────────────────────────────────────────────────
+#   WENO-3           
+# ─────────────────────────────────────────────────────────────
 def _weno3_left(am1, a0, ap1):
     """Reconstrucción desde la izquierda hacia i+1/2"""
     beta0 = (ap1 - a0)**2
@@ -144,7 +147,6 @@ def weno3_faces(U):
 
 # ─────────────────────────────────────────────────────────────
 #   WENO-5  clásico  (JS)           
-#      WENO-Z  (Borges 2008)      
 # ─────────────────────────────────────────────────────────────
 def _weno5_left(u):
     im2, im1, i, ip1, ip2 = u[:-4], u[1:-3], u[2:-2], u[3:-1], u[4:]
@@ -167,9 +169,9 @@ def _weno5_left(u):
 def _weno5_right(u):
     return _weno5_left(u[::-1])[::-1]   # simetría
 
-def weno5_faces(U, dx):
-    if NGHOST < 3:
-        raise ValueError("WENO-5 requiere NGHOST ≥ 3")
+def weno5_faces(U):
+    if NGHOST < 2:
+        raise ValueError("WENO-5 requiere NGHOST ≥ 2")
     vl = _weno5_left(U)
     vr = _weno5_right(U)
     return vl, vr                   # longitud Ntot-4
@@ -177,7 +179,7 @@ def weno5_faces(U, dx):
 
 #      WENO-Z  (Borges 2008)      
 # ─────────────────────────────────────────────────────────────
-def _wenoZ_left(u):
+def _wenoz_left(u):
     im2, im1, i, ip1, ip2 = u[:-4], u[1:-3], u[2:-2], u[3:-1], u[4:]
     beta0 = 13/12*(im2 - 2*im1 + i)**2   + 1/4*(im2 - 4*im1 + 3*i)**2
     beta1 = 13/12*(im1 - 2*i   + ip1)**2 + 1/4*(im1 - ip1)**2
@@ -196,28 +198,21 @@ def _wenoZ_left(u):
     p2 = (2*i    + 5*ip1 - ip2   )/6
     return w0*p0 + w1*p1 + w2*p2
 
-def _wenoZ_right(u):
-    return _wenoZ_left(u[::-1])[::-1]
+def _wenoz_right(u):
+    return _wenoz_left(u[::-1])[::-1]
 
-def wenoZ_faces(U, dx):
-    if NGHOST < 3:
-        raise ValueError("WENO-Z requiere NGHOST ≥ 3")
-    vl = _wenoZ_left(U)
-    vr = _wenoZ_right(U)
+def wenoz_faces(U):
+    if NGHOST < 2:
+        raise ValueError("WENO-Z requiere NGHOST ≥ 2")
+    vl = _wenoz_left(U)
+    vr = _wenoz_right(U)
     return vl, vr
 
 # ─────────────────────────────────────────────────────────────
 # 4.  Función principal
 # ─────────────────────────────────────────────────────────────
-
-def reconstruct(U, dx, *, limiter="minmod", axis=None):
-    """
-    Devuelve (UL, UR) con estados izquierdo/derecho en todas las Nx+1
-    caras internas + periódicas.  Soporta:
-        • minmod, mc, superbee  (MUSCL, O(2))
-        • MP5                   (O(5))
-        • WENO3, WENO5, WENOZ   (O(3) / O(5))
-    """
+"""  
+def reconstruct2(U, dx, *, limiter="minmod", axis=None):
     need = {"minmod":1, "mc":1, "superbee":1,
             "mp5":2, "weno3":1, "weno5":3, "wenoz":3}
     if NGHOST < need.get(limiter.lower(), 1):
@@ -239,11 +234,11 @@ def reconstruct(U, dx, *, limiter="minmod", axis=None):
             # ---------- MP5 / WENO --------------------------------------
             if name in ("mp5", "weno5", "wenoz", "weno3"):
                 if   name == "mp5":
-                    vl, vr = mp5_faces(Uk, dx);  off = 2
+                    vl, vr = mp5_faces(Uk);  off = 2
                 elif name == "weno5":
-                    vl, vr = weno5_faces(Uk, dx); off = 2
+                    vl, vr = weno5_faces(Uk); off = 2
                 elif name == "wenoz":
-                    vl, vr = wenoZ_faces(Uk, dx); off = 2
+                    vl, vr = wenoz_faces(Uk); off = 2
                 else:   # weno3
                     vl, vr = weno3_faces(Uk);     off = 1
 
@@ -295,13 +290,13 @@ def reconstruct(U, dx, *, limiter="minmod", axis=None):
 
             if name in ("mp5", "weno5", "wenoz", "weno3"):
                 if   name == "mp5":
-                    vl, vr = mp5_faces(Uk, dx);  off = 2
+                    vl, vr = mp5_faces(Uk);  off = 2
                 elif name == "weno5":
-                    vl, vr = weno5_faces(Uk, dx); off = 2
+                    vl, vr = weno5_faces(Uk); off = 2
                 elif name == "wenoz":
-                    vl, vr = wenoZ_faces(Uk, dx); off = 2
+                    vl, vr = wenoz_faces(Uk); off = 2
                 else:
-                    vl, vr = weno3_faces(Uk);     off = 1
+                    vl, vr = weno3_faces(Uk); off = 1
 
                 start = g - off
                 stop  = start + (Nx - 1)
@@ -328,3 +323,213 @@ def reconstruct(U, dx, *, limiter="minmod", axis=None):
         UR = UR.swapaxes(1, 2)
 
     return UL, UR
+
+# ------------------------------------------------------------------
+def reconstruct1(U, dx, *, limiter="minmod", axis=None):
+    g = NGHOST
+
+    if axis is None:
+        nvars, Ntot = U.shape
+        Nx = Ntot - 2*g
+        UL = np.zeros((nvars, Nx+1))
+        UR = np.zeros((nvars, Nx+1))
+
+        for k in range(nvars):
+            Uk = U[k]
+            if limiter == "mp5":
+                vl, vr = mp5_faces(Uk, dx)         #  len(vl) = Nx-1   (caras 1 … Nx-1)
+                UL[k, 1:]  = vl                 # caras   1 … Nx
+                UR[k, :-1] = vr
+            else:
+                slope = slope_full(Uk[g:-g], dx, limiter)
+                UL[k, 1:]  = Uk[g:-g] + 0.5*dx*slope
+                UR[k, :-1] = Uk[g:-g] - 0.5*dx*slope
+
+            UL[k, 0]  = Uk[g-1]
+            UR[k, 0]  = Uk[g]
+            UL[k, -1] = Uk[g+Nx-1]
+            UR[k, -1] = Uk[g+Nx]
+            
+
+        return UL, UR
+
+    if axis in (0, 1):
+        swap = (axis == 1)
+        if swap:
+            U = U.swapaxes(1, 2)
+
+        nvars, Nx_tot, Ny = U.shape
+        Nx = Nx_tot - 2*g
+        UL = np.zeros((nvars, Nx+1, Ny))
+        UR = np.zeros((nvars, Nx+1, Ny))
+
+        for k in range(nvars):
+            for j in range(Ny):
+                Uk = U[k, :, j]
+
+                if limiter == "mp5":
+                    vl, vr = mp5_faces(Uk, dx)
+                    if g > 2:
+                        cut = g - 2
+                        vl, vr = vl[cut:-cut], vr[cut:-cut]
+                    UL[k, 1:, j]  = vl
+                    UR[k, :-1, j] = vr
+                else:
+                    slope = slope_full(Uk[g:-g], dx, limiter)
+                    UL[k, 1:, j]  = Uk[g:-g] + 0.5*dx*slope
+                    UR[k, :-1, j] = Uk[g:-g] - 0.5*dx*slope
+
+                UL[k, 0,  j] = Uk[g-1]
+                UR[k, 0,  j] = Uk[g]
+                UL[k, -1, j] = Uk[g+Nx-1]
+                UR[k, -1, j] = Uk[g+Nx]
+
+        if swap:
+            UL = UL.swapaxes(1, 2)
+            UR = UR.swapaxes(1, 2)
+        return UL, UR
+
+    raise ValueError("axis debe ser None (1-D), 0 (x) o 1 (y)")
+ """
+
+
+def reconstruct(U, dx, *, limiter="minmod", axis=None, bc_x=None, bc_y=None):
+    need = {"minmod": 1, "mc": 1, "superbee": 1,
+            "mp5": 2, "weno3": 1, "weno5": 2, "wenoz": 2}
+    if NGHOST < need.get(limiter.lower(), 1):
+        raise ValueError(f"{limiter.upper()} requiere NGHOST ≥ {need[limiter.lower()]}")
+
+    g = NGHOST
+    name = limiter.lower()
+
+    if axis is None or axis == 0:
+        periodic = bc_x == ("periodic", "periodic")
+    elif axis == 1:
+        periodic = bc_y == ("periodic", "periodic")
+    else:
+        raise ValueError("axis debe ser None (1D), 0 (x) o 1 (y)")
+
+    # ============== 1-D =================================================
+    if axis is None:
+        nvars, Ntot = U.shape
+        Nx = Ntot - 2 * g
+        UL = np.empty((nvars, Nx + 1))
+        UR = np.empty((nvars, Nx + 1))
+
+        for k in range(nvars):
+            Uk = U[k]
+
+            if name in ("mp5", "weno5", "wenoz", "weno3"):
+                if name == "mp5":
+                    vl, vr = mp5_faces(Uk)
+                    off = 2
+                elif name == "weno5":
+                    vl, vr = weno5_faces(Uk)
+                    off = 2
+                elif name == "wenoz":
+                    vl, vr = wenoz_faces(Uk)
+                    off = 2
+                else:
+                    vl, vr = weno3_faces(Uk)
+                    off = 1
+
+                if periodic:
+                    start = g - off
+                    stop = start + (Nx - 1)
+                    UL[k, 1:Nx] = vl[start:stop]
+                    UR[k, 1:Nx] = vr[start:stop]
+                    UL[k, 0] = vl[g - off - 1]
+                    UR[k, 0] = vr[g - off]
+                    UL[k, -1] = vl[g + Nx - off - 1]
+                    UR[k, -1] = vr[g + Nx - off]
+                else:
+                    UL[k, 1:] = vl
+                    UR[k, :-1] = vr
+                    UL[k, 0] = Uk[g - 1]
+                    UR[k, 0] = Uk[g]
+                    UL[k, -1] = Uk[g + Nx - 1]
+                    UR[k, -1] = Uk[g + Nx]
+            else:
+                slope = slope_full(Uk[g:-g], dx, limiter)
+                UL[k, 1:] = Uk[g:-g] + 0.5 * dx * slope
+                UR[k, :-1] = Uk[g:-g] - 0.5 * dx * slope
+
+                if periodic:
+                    UL[k, 0] = Uk[g + Nx - 1] + 0.5 * dx * slope[-1]
+                    UR[k, 0] = Uk[g] - 0.5 * dx * slope[0]
+                    UL[k, -1] = Uk[g + Nx - 1] + 0.5 * dx * slope[-1]
+                    UR[k, -1] = Uk[g] - 0.5 * dx * slope[0]
+                else:
+                    UL[k, 0] = Uk[g - 1]
+                    UR[k, 0] = Uk[g]
+                    UL[k, -1] = Uk[g + Nx - 1]
+                    UR[k, -1] = Uk[g + Nx]
+
+        return UL, UR
+
+    # ============== 2-D =================================================
+    swap = (axis == 1)
+    if swap:
+        U = U.swapaxes(1, 2)
+
+    nvars, Nxtot, Ny = U.shape
+    Nx = Nxtot - 2 * g
+    UL = np.empty((nvars, Nx + 1, Ny))
+    UR = np.empty((nvars, Nx + 1, Ny))
+
+    for k in range(nvars):
+        for j in range(Ny):
+            Uk = U[k, :, j]
+
+            if name in ("mp5", "weno5", "wenoz", "weno3"):
+                if name == "mp5":
+                    vl, vr = mp5_faces(Uk)
+                    off = 2
+                elif name == "weno5":
+                    vl, vr = weno5_faces(Uk)
+                    off = 2
+                elif name == "wenoz":
+                    vl, vr = wenoz_faces(Uk)
+                    off = 2
+                else:
+                    vl, vr = weno3_faces(Uk)
+                    off = 1
+
+                if periodic:
+                    start = g - off
+                    stop = start + (Nx - 1)
+                    UL[k, 1:Nx, j] = vl[start:stop]
+                    UR[k, 1:Nx, j] = vr[start:stop]
+                    UL[k, 0 , j] = vl[g - off - 1]
+                    UR[k, 0 , j] = vr[g - off]
+                    UL[k, -1, j] = vl[g + Nx - off - 1]
+                    UR[k, -1, j] = vr[g + Nx - off]
+                else:
+                    UL[k, 1:, j] = vl
+                    UR[k, :-1, j] = vr
+                    UL[k, 0 , j] = Uk[g - 1]
+                    UR[k, 0 , j] = Uk[g]
+                    UL[k, -1, j] = Uk[g + Nx - 1]
+                    UR[k, -1, j] = Uk[g + Nx]
+            else:
+                slope = slope_full(Uk[g:-g], dx, limiter)
+                UL[k, 1:, j] = Uk[g:-g] + 0.5 * dx * slope
+                UR[k, :-1, j] = Uk[g:-g] - 0.5 * dx * slope
+
+                if periodic:
+                    UL[k, 0 , j] = Uk[g + Nx - 1] + 0.5 * dx * slope[-1]
+                    UR[k, 0 , j] = Uk[g] - 0.5 * dx * slope[0]
+                    UL[k, -1, j] = Uk[g + Nx - 1] + 0.5 * dx * slope[-1]
+                    UR[k, -1, j] = Uk[g] - 0.5 * dx * slope[0]
+                else:
+                    UL[k, 0 , j] = Uk[g - 1]
+                    UR[k, 0 , j] = Uk[g]
+                    UL[k, -1, j] = Uk[g + Nx - 1]
+                    UR[k, -1, j] = Uk[g + Nx]
+
+    if swap:
+        UL = UL.swapaxes(1, 2)
+        UR = UR.swapaxes(1, 2)
+
+    return UL, UR
+ 
