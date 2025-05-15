@@ -147,51 +147,75 @@ def shu_osher_1d(x):
     return initializer
 
 def explosion_problem_2d(X, Y, center=(1.0, 1.0), radius=0.4):
-    x0, y0 = center
-    r2 = (X - x0)**2 + (Y - y0)**2
-    inside = r2 < radius**2
+    def initializer(U):
+        x0, y0 = center
+        r2 = (X - x0)**2 + (Y - y0)**2
+        inside = r2 < radius**2
 
-    rho = np.where(inside, 1.0, 0.125)
-    u   = np.where(inside, 0.0, 0.0)
-    v   = np.where(inside, 0.0, 0.0)
-    p   = np.where(inside, 1.0, 0.1)
+        gamma = 1.4
 
-    gamma = 1.4
-    momx = rho * u
-    momy = rho * v
-    E    = p / (gamma - 1.0) + 0.5 * rho * (u**2 + v**2)
+        # Condiciones iniciales 2D usando máscaras
+        rho = np.where(inside, 1.0, 0.125)
+        v   = np.zeros_like(rho)
+        p   = np.where(inside, 1.0, 0.1)
 
-    U = np.zeros((4, *X.shape))
-    U[0] = rho
-    U[1] = momx
-    U[2] = momy
-    U[3] = E
-    return U
+        momx = rho * v
+        momy = rho * v
+        E    = p / (gamma - 1.0) + 0.5 * rho * v**2
+
+        U[0] = rho
+        U[1] = momx
+        U[2] = momy
+        U[3] = E
+        return U
+    return initializer
+
+
 
 def schulz_rinne_2d(X, Y):
-    gamma = 1.4
-    Nx, Ny = X.shape
-    U = np.zeros((4, Nx, Ny))
+    """
+    Inicializador vectorizado para el test de Schulz-Rinne (1993).
+    Divide el dominio en 4 cuadrantes y asigna condiciones iniciales distintas.
+    """
+    def initializer(U):
+        gamma = 1.4
 
-    Q1 = [1.5, 0.0, 0.0, 1.5]
-    Q2 = [33/62, 4/np.sqrt(11), 0.0, 0.3]
-    Q3 = [77/558, 4/np.sqrt(11), 4/np.sqrt(11), 9/310]
-    Q4 = [33/62, 0.0, 4/np.sqrt(11), 0.3]
+        # Condiciones por cuadrante
+        Q1 = [1.5,      0.0,             0.0,             1.5]
+        Q2 = [33/62,    4/np.sqrt(11),   0.0,             0.3]
+        Q3 = [77/558,   4/np.sqrt(11),   4/np.sqrt(11),   9/310]
+        Q4 = [33/62,    0.0,             4/np.sqrt(11),   0.3]
 
-    for i in range(Nx):
-        for j in range(Ny):
-            xi, yj = X[i, j], Y[i, j]
-            if xi > 0.8 and yj > 0.8:
-                rho, vx, vy, P = Q1
-            elif xi <= 0.8 and yj > 0.8:
-                rho, vx, vy, P = Q2
-            elif xi <= 0.8 and yj <= 0.8:
-                rho, vx, vy, P = Q3
-            else:
-                rho, vx, vy, P = Q4
+        # Máscaras para cada región
+        m1 = (X > 0.8) & (Y > 0.8)
+        m2 = (X <= 0.8) & (Y > 0.8)
+        m3 = (X <= 0.8) & (Y <= 0.8)
+        m4 = (X > 0.8) & (Y <= 0.8)
 
-            U[0, i, j] = rho
-            U[1, i, j] = rho * vx
-            U[2, i, j] = rho * vy
-            U[3, i, j] = P / (gamma - 1) + 0.5 * rho * (vx**2 + vy**2)
-    return U
+        # Inicializar arrays
+        rho = np.zeros_like(X)
+        vx  = np.zeros_like(X)
+        vy  = np.zeros_like(X)
+        P   = np.zeros_like(X)
+
+        # Asignación vectorizada
+        for mask, (r, vx_, vy_, p) in zip([m1, m2, m3, m4], [Q1, Q2, Q3, Q4]):
+            rho[mask] = r
+            vx[mask]  = vx_
+            vy[mask]  = vy_
+            P[mask]   = p
+
+        # Calcular variables conservadas
+        momx = rho * vx
+        momy = rho * vy
+        E    = P / (gamma - 1) + 0.5 * rho * (vx**2 + vy**2)
+
+        # Asignar al arreglo U
+        U[0] = rho
+        U[1] = momx
+        U[2] = momy
+        U[3] = E
+
+        return U
+    return initializer
+

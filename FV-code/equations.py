@@ -138,5 +138,17 @@ class Euler1D(Euler2D):
         e = E / rho - 0.5 * v**2
         P = (self.gamma - 1.0) * rho * e
         return np.maximum(P, p_floor)
+    
+    def conserved_to_primitive(self, U):
+        rho, mom, E = U
+        v = mom / rho
+        P = self._pressure(U)
+        return np.array([rho, v, P])
+
+    def primitive_to_conserved(self, V):
+        rho, v, P = V
+        mom = rho * v
+        E   = P / (self.gamma - 1.0) + 0.5 * rho * v**2
+        return np.array([rho, mom, E])
 
 
